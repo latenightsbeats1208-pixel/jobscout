@@ -1,0 +1,6 @@
+{
+  "comment": "Runtime Node embarque dans l'installeur Windows. Verifie par SHA256 contre SHASUMS256.txt de nodejs.org.",
+  "version": "v22.23.2",
+  "arch": "win-x64",
+  "pinned_at": "2026-08-29"
+}

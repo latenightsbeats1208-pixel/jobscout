@@ -1,0 +1,27 @@
+node_modules
+.next
+out
+build
+dist
+
+.env
+.env.local
+
+data/jobscout.db
+data/jobscout.db-journal
+data/documents/
+
+*.log
+.DS_Store
+.vscode
+
+# ajouts release publique (2026-09-11)
+data/
+demo-profiles/
+installer/dist/
+installer/output/
+installer/runtime/
+installer/leak-needles.local.txt
+*.tsbuildinfo
+logs-*.txt
+.claude/

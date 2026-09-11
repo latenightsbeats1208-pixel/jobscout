@@ -1,0 +1,20 @@
+# Artefacts de build — jamais versionnés.
+dist/
+output/
+vendor/
+launcher/out/
+assets/jobscout.ico
+
+# Matériel de signature de code — JAMAIS versionné. Le certificat vit HORS du
+# dépôt ; chemin et mot de passe passent par l'environnement (voir sign.mjs).
+*.pfx
+*.p12
+*.cer
+*.crt
+*.key
+
+# Identité de l'opérateur utilisée par check-leaks.mjs.
+# Ce fichier contient précisément les données qu'on cherche à protéger :
+# il ne doit JAMAIS entrer dans le dépôt.
+leak-needles.local.txt
+leak-needles.operator.txt

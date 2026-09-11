@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #ffffff;
+  --surface: #fbfbfd;
+  --surface-hover: #f5f5f7;
+  --border: #d2d2d7;
+  --text: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --success: #30d158;
+  --warning: #ff9f0a;
+  --danger: #ff3b30;
+}
+
+.dark {
+  --bg: #000000;
+  --surface: #1c1c1e;
+  --surface-hover: #2c2c2e;
+  --border: #38383a;
+  --text: #f5f5f7;
+  --text-secondary: #a1a1a6;
+  --accent: #0a84ff;
+  --accent-hover: #2997ff;
+  --success: #30d158;
+  --warning: #ff9f0a;
+  --danger: #ff453a;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--accent);
+  color: white;
+}
+
+/* Apple-style scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+  background-clip: content-box;
+  border: 2px solid transparent;
+}
+
+/* Description renderer (job descriptions) */
+.prose-offre {
+  color: var(--text);
+  line-height: 1.65;
+}
+.prose-offre h1,
+.prose-offre h2,
+.prose-offre h3 {
+  font-weight: 600;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  letter-spacing: -0.01em;
+}
+.prose-offre h1 { font-size: 24px; }
+.prose-offre h2 { font-size: 20px; }
+.prose-offre h3 { font-size: 17px; }
+.prose-offre p { margin: 0.75em 0; }
+.prose-offre ul,
+.prose-offre ol { margin: 0.75em 0; padding-left: 1.5em; }
+.prose-offre ul { list-style: disc; }
+.prose-offre ol { list-style: decimal; }
+.prose-offre li { margin: 0.25em 0; }
+.prose-offre a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.prose-offre strong { font-weight: 600; }
+.prose-offre em { font-style: italic; }
