@@ -139,7 +139,7 @@ const VERDICT_LABEL: Record<string, string> = {
   a_tenter: "À tenter",
   hors_profil: "Hors de votre profil",
 };
-const KIND_LABEL: Record<string, string> = { diplome: "diplôme", experience: "expérience", langue: "langue" };
+const KIND_LABEL: Record<string, string> = { diplome: "diplôme", experience: "expérience", langue: "langue", administratif: "condition administrative" };
 const COVERAGE_MARK: Record<string, { mark: string; label: string; className: string }> = {
   oui: { mark: "✓", label: "couvert", className: "text-success" },
   partiel: { mark: "≈", label: "partiellement couvert", className: "text-textSecondary" },

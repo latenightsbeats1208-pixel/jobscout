@@ -33,7 +33,7 @@ const REVIEW_TOOL: StructuredTool = {
                 type: "object",
                 properties: {
                   requirement: { type: "string" },
-                  kind: { type: "string", enum: ["competence", "diplome", "experience", "langue"] },
+                  kind: { type: "string", enum: ["competence", "diplome", "experience", "langue", "administratif"] },
                   covered: { type: "string", enum: ["oui", "partiel", "non"] },
                 },
                 required: ["requirement", "kind", "covered"],
@@ -119,7 +119,10 @@ export type ReviewInput = {
 async function reviewBatch(profile: ProfileFull, offres: ReviewInput[]): Promise<(AiReview | null)[]> {
   const res = await callStructured({
     role: "reviewer",
-    maxTokens: 600 * offres.length,
+    // Plancher fixe en plus de la part par offre : les modèles qui réfléchissent
+    // avant de répondre (Gemini Flash) prennent ce temps sur le même budget, et
+    // un petit lot de 1 à 3 offres revenait tronqué, donc vide.
+    maxTokens: 1500 + 500 * offres.length,
     system: [
       { text: systemPrompt(), cache: true },
       { text: `<profil_candidat>\n${profilePayload(profile, new Date())}\n</profil_candidat>`, cache: true },

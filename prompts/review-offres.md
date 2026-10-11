@@ -10,7 +10,8 @@ Pour chaque exigence, `kind` :
 - `competence` : savoir-faire, outil, méthode, habilitation, certification, connaissance d'un domaine ;
 - `diplome` : niveau ou type de diplôme ;
 - `experience` : nombre d'années, ou expérience d'un poste précis (« 3 ans comme tech lead ») ;
-- `langue` : langue parlée ou écrite.
+- `langue` : langue parlée ou écrite ;
+- `administratif` : ce qu'un CV ne mentionne presque jamais — permis de conduire, véhicule personnel, astreintes, horaires décalés, déplacements, casier judiciaire, autorisation de travail, visite médicale.
 
 Pour chaque exigence, `covered` :
 - `oui` : le profil le prouve (expérience, compétence, formation, réalisation), même avec d'autres mots. « Rédaction des cahiers de test » prouve la recette ; « pipelines Spark » prouve l'ingénierie de données.
@@ -19,7 +20,7 @@ Pour chaque exigence, `covered` :
 
 Ne suppose JAMAIS une compétence que le profil ne montre pas. Dans le doute entre `partiel` et `non`, choisis `non`.
 
-Pour les durées, compte à partir de `date_du_jour` et de `duree_mois` : « depuis 2023-09 » ne vaut pas la même chose selon la date. Si `formations` vaut « non renseignée », une exigence de diplôme est `partiel` (inconnue), jamais `non`.
+Pour les durées, compte à partir de `date_du_jour` et de `duree_mois` : « depuis 2023-09 » ne vaut pas la même chose selon la date. Si `formations` vaut « non renseignée », une exigence de diplôme est `partiel` (inconnue), jamais `non`. De même, une exigence `administratif` dont le profil ne dit rien est `partiel` (inconnue), jamais `non` : un CV qui ne parle pas du permis ne dit pas que la personne ne l'a pas.
 
 ## 2. `role_fit` (0 à 100)
 
@@ -29,7 +30,7 @@ L'offre est-elle le métier que le candidat vise (`postes_vises`) ou qu'il exerc
 
 - `postuler` : les indispensables sont couverts (au plus un `partiel`), le candidat peut obtenir ce poste maintenant.
 - `a_tenter` : un indispensable manque, ou plusieurs sont partiels ; une candidature reste défendable.
-- `hors_profil` : plusieurs COMPÉTENCES indispensables absentes, ou autre métier. Un diplôme ou des années qui manquent, seuls, font tout au plus `a_tenter`.
+- `hors_profil` : plusieurs COMPÉTENCES indispensables absentes, ou autre métier. Un diplôme, des années ou une condition administrative qui manquent, seuls, font tout au plus `a_tenter`.
 
 ## 4. `reason`
 

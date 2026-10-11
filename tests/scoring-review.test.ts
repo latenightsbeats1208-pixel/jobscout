@@ -43,6 +43,36 @@ describe("réponse du modèle", () => {
     expect(r.version).toBe(REVIEW_VERSION);
   });
 
+  it("range le permis et ses semblables en conditions administratives, qui ne filtrent pas", () => {
+    const kindOf = (requirement: string, kind = "competence") =>
+      parseReview({ verdict: "a_tenter", role_fit: 50, must_haves: [{ requirement, kind, covered: "non" }] }, meta)!.must_haves[0].kind;
+    // Le modèle les a déjà classés en compétences (relectures réelles du banc) : le filet les rattrape.
+    expect(kindOf("Permis B obligatoire")).toBe("administratif");
+    expect(kindOf("Permis B titulaire")).toBe("administratif");
+    expect(kindOf("Être véhiculé")).toBe("administratif");
+    expect(kindOf("Véhiculée")).toBe("administratif");
+    expect(kindOf("Astreintes le week-end")).toBe("administratif");
+    // Des véhicules comme objet de travail restent des compétences.
+    expect(kindOf("Simulation numérique pour véhicules")).toBe("competence");
+    expect(kindOf("Modélisation R&D de véhicules")).toBe("competence");
+    expect(kindOf("Maintenance de véhicule électrique")).toBe("competence");
+    expect(kindOf("Permis B", "administratif")).toBe("administratif");
+
+    const r = parseReview(
+      {
+        verdict: "hors_profil",
+        role_fit: 100,
+        must_haves: [
+          { requirement: "Permis B titulaire", kind: "competence", covered: "non" },
+          { requirement: "Maintenance CVC", kind: "competence", covered: "oui" },
+        ],
+      },
+      meta
+    )!;
+    expect(r.skills_fit).toBe(100);
+    expect(aiExclusion(r)).toBeNull();
+  });
+
   it("rejette une réponse sans verdict exploitable, accepte les verdicts anglais", () => {
     expect(parseReview({ verdict: "peut-être", must_haves: [] }, meta)).toBeNull();
     expect(parseReview(null, meta)).toBeNull();

@@ -12,7 +12,7 @@ import type { ProfileFull } from "@/lib/cv/types";
  */
 
 /** À changer à chaque modification du prompt ou du barème : les relectures antérieures sont alors refaites. */
-export const REVIEW_VERSION = "review-v2";
+export const REVIEW_VERSION = "review-v3";
 
 export type Coverage = "oui" | "partiel" | "non";
 export type Verdict = "postuler" | "a_tenter" | "hors_profil";
@@ -20,9 +20,11 @@ export type Verdict = "postuler" | "a_tenter" | "hors_profil";
  * Nature d'une exigence. Seules les compétences (savoir-faire, outils,
  * méthodes, habilitations, certifications) décident du filtre : les années
  * d'expérience et les langues sont déjà filtrées localement sur des phrases
- * explicites, et un diplôme s'accompagne souvent d'un « ou équivalent ».
+ * explicites, un diplôme s'accompagne souvent d'un « ou équivalent », et une
+ * condition administrative (permis, véhicule, astreintes…) est rarement écrite
+ * dans un CV — son absence ne prouve rien.
  */
-export type RequirementKind = "competence" | "diplome" | "experience" | "langue";
+export type RequirementKind = "competence" | "diplome" | "experience" | "langue" | "administratif";
 export type MustHave = { requirement: string; covered: Coverage; kind: RequirementKind };
 
 export type AiReview = {
@@ -75,7 +77,16 @@ const KINDS: Record<string, RequirementKind> = {
   diplome: "diplome", "diplôme": "diplome", degree: "diplome",
   experience: "experience", "expérience": "experience",
   langue: "langue", language: "langue",
+  administratif: "administratif", administrative: "administratif", admin: "administratif",
 };
+
+/**
+ * Filet de sécurité si le modèle classe quand même un permis en compétence.
+ * Volontairement étroit : « véhiculé » (avoir sa voiture), pas « véhicule »,
+ * pour que « simulation numérique de véhicules » reste une compétence.
+ */
+const ADMINISTRATIVE =
+  /(?<![\p{L}])(?:permis|v[ée]hicul[ée]e?s?(?<!v[ée]hicules?)|casier judiciaire|autorisation de travail|astreintes?|driving licen[cs]e|driver'?s licen[cs]e)(?![\p{L}])/iu;
 
 const COVERAGE: Record<string, Coverage> = { oui: "oui", yes: "oui", partiel: "partiel", partial: "partiel", non: "non", no: "non" };
 const VERDICTS: Record<string, Verdict> = {
@@ -106,7 +117,8 @@ export function parseReview(
       const requirement = typeof x.requirement === "string" ? x.requirement.trim() : "";
       const covered = COVERAGE[String(x.covered ?? "").toLowerCase()];
       // Nature absente ou inconnue : compétence, le cas de loin le plus courant.
-      const kind = KINDS[String(x.kind ?? "").toLowerCase()] ?? "competence";
+      let kind = KINDS[String(x.kind ?? "").toLowerCase()] ?? "competence";
+      if (kind === "competence" && ADMINISTRATIVE.test(requirement)) kind = "administratif";
       return requirement && covered ? { requirement: requirement.slice(0, 80), covered, kind } : null;
     })
     .filter((m): m is MustHave => m !== null)
