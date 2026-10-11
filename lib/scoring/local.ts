@@ -16,6 +16,7 @@ import {
   type Corpus,
 } from "./text";
 import { assessSeniority, profileExperienceYears } from "./seniority";
+import { assessLanguage, profileLanguages, type Mastery } from "./language";
 
 export type { Corpus } from "./text";
 export { buildCorpus } from "./text";
@@ -41,12 +42,24 @@ export type ScoreResult = {
 };
 
 /**
- * Poids de la note de base. L'intitulé et les compétences portent l'essentiel :
- * ce sont eux qui disent si l'offre est le bon métier. Les mots-clés de
- * recherche pèsent peu, car chaque offre trouvée les contient déjà — c'est la
- * recherche qui l'a ramenée.
+ * Composition de la note. Les critères éliminatoires (langue, pays, expérience)
+ * sont des FILTRES et non des poids : additionnés aux autres, un bon intitulé
+ * compensait une langue que la personne ne parle pas.
+ *
+ * Les compétences ne sont PAS un filtre, bien qu'elles devraient l'être : la
+ * note locale ne voit une compétence que si l'annonce la nomme, et beaucoup
+ * décrivent le métier en phrases (« pipelines de données », « rédaction des
+ * cahiers de test »). Mesuré sur le banc (tests/scoring-eval.test.ts) : en
+ * faire un filtre, ou un multiplicateur de l'intitulé, écartait des offres
+ * pertinentes — NDCG@20 de 78 % à 71 %. Ce jugement revient à une relecture
+ * par l'IA, qui comprend ces phrases.
+ *
+ * Parmi les offres acceptables : intitulé et compétences portent la note, les
+ * mots-clés de recherche pèsent peu (chaque offre trouvée les contient déjà).
  */
-const WEIGHTS = { title: 0.4, skills: 0.35, keywords: 0.1, country: 0.15 };
+const WEIGHTS = { title: 0.48, skills: 0.42, keywords: 0.1 };
+/** Note de compétences qui vaut le plein crédit : aucun profil ne couvre 100 % d'une annonce. */
+const SKILLS_FULL_CREDIT = 80;
 
 /** Plafond d'une offre hors critères : elle reste visible, en fin de liste. */
 const EXCLUDED_CAP = 15;
@@ -105,6 +118,7 @@ type PreparedProfile = {
   keywords: { tokens: string[]; info: number }[];
   vocabulary: Set<string>;
   years: number | null;
+  languages: Map<string, Mastery> | null;
 };
 
 function prepareProfile(profile: ProfileFull, corpus: Corpus): PreparedProfile {
@@ -154,6 +168,7 @@ function prepareProfile(profile: ProfileFull, corpus: Corpus): PreparedProfile {
     keywords,
     vocabulary: new Set(tokenize(vocabularyText)),
     years: profileExperienceYears(profile),
+    languages: profileLanguages(profile),
   };
 }
 
@@ -307,77 +322,6 @@ function scoreCountry(targetCountries: string[], offreCountry: string | null): n
 }
 
 // ----------------------------------------------------------------------------
-// Language bonus
-// ----------------------------------------------------------------------------
-//
-// Idea : if the offer is mostly written in a language the user masters at a
-// usable professional level (B2+), award up to +8 pts. This avoids penalizing
-// a French-German profile reading a German-language offer that would
-// otherwise score low on keyword density.
-
-const LANG_KEYWORDS: Record<string, RegExp> = {
-  fr: /\b(?:le|la|les|et|de|du|des|pour|avec|votre|mission|profil|exp[ée]rience|comp[ée]tences|formation|entreprise)\b/gi,
-  en: /\b(?:the|and|of|for|with|your|will|experience|skills|team|company|role|responsibilities)\b/gi,
-  es: /\b(?:el|la|los|las|y|de|del|para|con|tu|experiencia|formaci[oó]n|empresa|misi[oó]n|equipo)\b/gi,
-  de: /\b(?:der|die|das|und|für|mit|sie|erfahrung|kenntnisse|team|unternehmen|aufgaben)\b/gi,
-  it: /\b(?:il|la|gli|le|e|di|del|per|con|tua|esperienza|competenze|azienda|team)\b/gi,
-  pt: /\b(?:o|a|os|as|e|de|do|para|com|sua|experi[eê]ncia|empresa|equipe)\b/gi,
-};
-
-const LANG_PROFILE_ALIASES: Record<string, string[]> = {
-  fr: ["français", "francais", "french"],
-  en: ["anglais", "english", "ingles"],
-  es: ["espagnol", "spanish", "espanol", "español"],
-  de: ["allemand", "german", "deutsch"],
-  it: ["italien", "italian", "italiano"],
-  pt: ["portugais", "portuguese", "portugues", "português"],
-};
-
-const PROFICIENT_LEVELS = /\b(c2|c1|b2|courant|fluent|bilingue|bilingual|natif|native|maternelle|mother)\b/i;
-
-function detectOfferLanguage(title: string, description: string): string {
-  const text = `${title}\n${description}`;
-  let bestLang = "fr";
-  let bestCount = 0;
-  for (const [lang, re] of Object.entries(LANG_KEYWORDS)) {
-    const m = text.match(re);
-    const count = m ? m.length : 0;
-    if (count > bestCount) {
-      bestCount = count;
-      bestLang = lang;
-    }
-  }
-  return bestLang;
-}
-
-function userMastersLanguage(profileLanguages: Language[], iso: string): boolean {
-  const aliases = LANG_PROFILE_ALIASES[iso] ?? [];
-  for (const l of profileLanguages) {
-    const name = normalize(l.name ?? "");
-    if (!aliases.some((a) => name.includes(normalize(a)))) continue;
-    // Default to "the user listed it = they speak it" if no level is given.
-    if (!l.level) return true;
-    return PROFICIENT_LEVELS.test(l.level);
-  }
-  return false;
-}
-
-function scoreLanguage(
-  profileLanguages: Language[],
-  title: string,
-  description: string
-): { score: number; offerLang: string; matched: boolean } {
-  const offerLang = detectOfferLanguage(title, description);
-  const matched = userMastersLanguage(profileLanguages, offerLang);
-  // Full bonus if matched, half if user has English as fallback for non-EN offers
-  if (matched) return { score: 100, offerLang, matched: true };
-  const hasEnglish = userMastersLanguage(profileLanguages, "en");
-  if (hasEnglish && offerLang !== "en")
-    return { score: 30, offerLang, matched: false };
-  return { score: 0, offerLang, matched: false };
-}
-
-// ----------------------------------------------------------------------------
 // NEW : Duration bonus — V.I.E specific
 // ----------------------------------------------------------------------------
 //
@@ -460,38 +404,44 @@ function scorePrepared(
   const keywords = scoreKeywords(p, o);
   const country = scoreCountry(profile.target_countries, offre.country);
   const seniority = assessSeniority(p.years, offre.title, offre.description_text);
-  const language = scoreLanguage(profile.languages, offre.title, offre.description_text);
+  const language = assessLanguage(p.languages, offre.title, offre.description_text);
   const contract = scoreContract(profile.preferred_contracts, offre);
   const duration = scoreDuration(contract.category, offre.description_text);
 
-  const base =
-    (title.score * WEIGHTS.title +
-      skills.score * WEIGHTS.skills +
-      keywords.score * WEIGHTS.keywords +
-      country * WEIGHTS.country) *
-    seniority.factor;
+  // 1. Filtres. Une offre qui en échoue un est « hors critères » : visible en
+  //    fin de liste, note plafonnée.
+  const exclusions: string[] = [];
+  if (language.excluded) exclusions.push(language.excluded);
+  if (country === 0) exclusions.push(`hors des pays cibles (${offre.country})`);
+  if (seniority.excluded) exclusions.push(seniority.excluded);
 
-  const languageBonus = (language.score / 100) * 8; // jusqu'à +8
+  // 2. Pertinence, parmi les offres acceptables.
+  const relevance =
+    WEIGHTS.title * title.score +
+    WEIGHTS.skills * 100 * Math.min(1, skills.score / SKILLS_FULL_CREDIT) +
+    WEIGHTS.keywords * keywords.score;
+
+  // 3. Ajustements : niveaux partiels (expérience, langue), puis préférences.
   const durationBonus = (duration.score / 100) * 5; // jusqu'à +5, V.I.E seulement
   // Contrat : centré sur 50 → contrat recherché +10, inconnu 0, identifié mais non recherché −6
   const contractDelta = ((contract.score - 50) / 50) * 10;
-
   let finalScore = Math.round(
-    Math.max(0, Math.min(100, base + languageBonus + durationBonus + contractDelta))
+    Math.max(0, Math.min(100, relevance * seniority.factor * language.factor + durationBonus + contractDelta))
   );
-  if (seniority.excluded) finalScore = Math.min(finalScore, EXCLUDED_CAP);
+  if (exclusions.length) finalScore = Math.min(finalScore, EXCLUDED_CAP);
 
   const parts: string[] = [];
-  if (seniority.excluded) parts.push(`Hors critères, ${seniority.excluded}`);
+  if (exclusions.length) parts.push(`Hors critères : ${exclusions[0]}`);
   if (title.best && title.score >= 50) parts.push(`intitulé proche de « ${title.best} »`);
   if (skills.anchoredMatched.length) {
     parts.push(`compétences ancrées : ${skills.anchoredMatched.slice(0, 3).join(", ")}`);
   } else if (skills.matched.length) {
     parts.push(`compétences : ${skills.matched.slice(0, 3).join(", ")}`);
+  } else if (p.skills.length) {
+    parts.push("aucune compétence du profil reconnue dans l'annonce");
   }
   if (!seniority.excluded && seniority.note) parts.push(seniority.note);
-  if (country === 0) parts.push("hors pays cibles");
-  if (language.matched) parts.push(`langue ${language.offerLang.toUpperCase()} OK`);
+  if (!language.excluded && language.note) parts.push(language.note);
   if (duration.months && duration.score >= 60) parts.push(`durée ${duration.months} mois`);
   if (contract.score === 100) parts.push(`${contract.category.toUpperCase()} recherché`);
   else if (contract.score === 20) parts.push(`${contract.category} (non ciblé)`);
@@ -508,7 +458,7 @@ function scorePrepared(
       contract: contract.score,
       title: title.score,
       seniority: seniority.score,
-      ...(seniority.excluded ? { excluded: seniority.excluded } : {}),
+      ...(exclusions.length ? { excluded: exclusions.join(" ; ") } : {}),
     },
     reason,
   };
