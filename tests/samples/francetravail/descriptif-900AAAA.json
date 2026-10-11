@@ -1,0 +1,21 @@
+{
+  "numeroOffre": "Offre n° 900AAAA",
+  "intituleOffre": "Tech Lead .Net (H/F)",
+  "codeRome": "M1805",
+  "appellationRome": "Développeur / Développeuse informatique",
+  "descriptif": "Au sein d'une équipe Tech & Product organisée en mode agile, vous êtes le Tech Lead .Net de la plateforme et le référent technique des développeurs.\n\nVous garantissez la cohérence de l'architecture, pilotez la dette technique et accompagnez la montée en compétences de l'équipe.\nVous participez aux choix technologiques et aux recrutements techniques.\n\nProfil attendu :\n\nVous justifiez d'au moins huit ans d'expérience en développement .NET et d'une bonne maîtrise d'Azure.",
+  "lieuTravail": "Lyon (69)",
+  "deplacement": null,
+  "syntheseContrat": "CDI - Contrat travail",
+  "syntheseHoraire": "Non disponible",
+  "salaire": "Annuel de 50000.0 Euros à 60000.0 Euros",
+  "listeAvantages": [],
+  "qualification": "Cadre",
+  "descriptionEntreprise": null,
+  "listeCompetence": [
+    { "libelleCompetence": "Concevoir une application web", "estUneCompetenceIndispensable": false },
+    { "libelleCompetence": "Application web", "estUneCompetenceIndispensable": false }
+  ],
+  "listeSavoirEtre": ["Faire preuve de curiosité, d'ouverture d'esprit"],
+  "etablissement": { "libelleEnseigne": "EXEMPLE CONSEIL", "effectif": "3 à 5 salariés" }
+}
