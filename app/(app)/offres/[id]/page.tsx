@@ -7,6 +7,8 @@ import { getDb } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { DescriptionRenderer } from "@/components/app/description-renderer";
 import { ActionsPanel } from "./actions";
+import { OfferFeedbackControl } from "@/components/app/offer-feedback";
+import { getFeedback } from "@/lib/db/feedback";
 import { formatRelativeDate, scoreColor } from "@/lib/utils";
 import { CONTRACT_LABELS } from "@/lib/contracts";
 import { SOURCES_META } from "@/lib/sources-meta";
@@ -73,6 +75,9 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
             initialTrackingStatus={existingApplication?.status ?? null}
             initialFolder={docs.length > 0 ? offreFolderPath(offre.id, offre.company, offre.title) : null}
           />
+          <section aria-label="Votre avis" className="glass-panel p-5">
+            <OfferFeedbackControl offerId={offre.id} initial={getFeedback(offre.id)} />
+          </section>
           {offre.score_breakdown && (
             <section aria-labelledby="score-title" className="glass-panel p-5">
               <h2 id="score-title" className="text-h3">Pourquoi ce score ?</h2>

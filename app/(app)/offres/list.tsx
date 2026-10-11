@@ -10,6 +10,8 @@ import { cn, formatRelativeDate, scoreColor } from "@/lib/utils";
 import type { OffreSummary, OffersSearch, OffersSort } from "@/lib/db/offres";
 import { CONTRACT_LABELS, CONTRACT_ORDER, type ContractCategory } from "@/lib/contracts";
 import { SOURCES_META } from "@/lib/sources-meta";
+import { OfferFeedbackControl } from "@/components/app/offer-feedback";
+import { FEEDBACK_EVENT, type FeedbackEventDetail } from "@/lib/feedback";
 
 const sourceLabels = Object.fromEntries(SOURCES_META.map((source) => [source.id, source.label]));
 const numberFormat = new Intl.NumberFormat("fr-FR");
@@ -96,6 +98,21 @@ export function OffresList({
       setPage(1);
     }
   }, [initialMinScore]);
+
+  // Un avis donné dans l'aperçu se reflète aussitôt sur sa ligne. Pas de
+  // reclassement immédiat : l'offre ne doit pas fuir sous le curseur ; un 👎
+  // descend en fin de liste au prochain chargement.
+  useEffect(() => {
+    function onFeedback(e: Event) {
+      const { offerId, feedback } = (e as CustomEvent<FeedbackEventDetail>).detail;
+      setResult((current) => ({
+        ...current,
+        offers: current.offers.map((o) => (o.id === offerId ? { ...o, feedback } : o)),
+      }));
+    }
+    window.addEventListener(FEEDBACK_EVENT, onFeedback);
+    return () => window.removeEventListener(FEEDBACK_EVENT, onFeedback);
+  }, []);
 
   // router.refresh() après un scan apporte un nouveau résultat sans perdre les filtres actifs.
   useEffect(() => {
@@ -268,6 +285,8 @@ function OfferRowContent({ offer }: { offer: OffreSummary }) {
           {offer.contract_category !== "autre" && <Badge variant={offer.contract_category === "vie" ? "info" : "default"}>{CONTRACT_LABELS[offer.contract_category]}</Badge>}
           {(offer.has_cv || offer.has_lm) && <Badge variant="success">Dossier prêt</Badge>}
           {offer.description_status === "failed" && <Badge variant="warning">Annonce partielle</Badge>}
+          {offer.feedback?.verdict === "up" && <Badge variant="success">👍 Pour moi</Badge>}
+          {offer.feedback?.verdict === "down" && <Badge>👎 Pas pour moi</Badge>}
         </span>
       </span>
       <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-textSecondary group-hover:text-accent xl:hidden" />
@@ -308,6 +327,9 @@ function OfferPreview({ offer }: { offer: OffreSummary }) {
       <div className="py-5">
         <p className="text-small font-semibold">Pourquoi cette offre ?</p>
         <p className="mt-1 line-clamp-3 text-small leading-relaxed text-textSecondary">{offer.score_reason || `Score ${score.label.toLowerCase()} pour votre profil.`}</p>
+      </div>
+      <div className="border-t border-border py-5">
+        <OfferFeedbackControl offerId={offer.id} initial={offer.feedback} />
       </div>
       <div className="border-t border-border py-5">
         <p className="text-small font-semibold">En bref</p>

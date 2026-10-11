@@ -3,6 +3,7 @@ import { getDb, asJson, parseJson } from "./index";
 import type { ScrapedOffre } from "@/lib/scrapers/base";
 import type { ScoreResult } from "@/lib/scoring/local";
 import type { AiReview } from "@/lib/scoring/review";
+import type { FeedbackVerdict, OfferFeedback } from "@/lib/feedback";
 import { classifyContract, CONTRACT_ORDER, type ContractCategory } from "@/lib/contracts";
 
 export type { ScrapedOffre };
@@ -63,6 +64,8 @@ export type OffreSummary = Pick<
 > & {
   description_text: string;
   score_reason: string | null;
+  /** Avis de l'utilisateur (👍 / 👎), ou null. */
+  feedback: OfferFeedback | null;
 };
 
 export type OffersSort = "smart" | "newest" | "oldest" | "score";
@@ -143,7 +146,10 @@ type CacheRow = Pick<
   OffreRow,
   "id" | "source" | "url" | "title" | "company" | "country" | "location" |
   "contract_type" | "description_status" | "posted_at" | "score" | "is_vie"
-> & { head: string | null; excerpt: string | null; score_breakdown: string | null; has_cv: number; has_lm: number };
+> & {
+  head: string | null; excerpt: string | null; score_breakdown: string | null; has_cv: number; has_lm: number;
+  feedback_verdict: FeedbackVerdict | null; feedback_reason: string | null;
+};
 
 function buildOffresCache(fingerprint: string): OffresCache {
   // La description entière ne remonte pas : 4 000 caractères suffisent à classer le
@@ -155,8 +161,11 @@ function buildOffresCache(fingerprint: string): OffresCache {
       substr(o.description_text, 1, 4000) AS head,
       substr(o.description_text, 1, 1000) AS excerpt,
       EXISTS(SELECT 1 FROM documents WHERE offre_id = o.id AND type = 'cv') AS has_cv,
-      EXISTS(SELECT 1 FROM documents WHERE offre_id = o.id AND type = 'lm') AS has_lm
-    FROM offres o ORDER BY ${SMART_ORDER}
+      EXISTS(SELECT 1 FROM documents WHERE offre_id = o.id AND type = 'lm') AS has_lm,
+      f.verdict AS feedback_verdict, f.reason AS feedback_reason
+    FROM offres o LEFT JOIN offre_feedback f ON f.offre_id = o.id
+    -- Une offre jugée « pas pour moi » descend en fin de liste, sans disparaître.
+    ORDER BY (f.verdict = 'down') ASC, ${SMART_ORDER}
   `).all() as CacheRow[];
 
   const contractCounts = Object.fromEntries(CONTRACT_ORDER.map((contract) => [contract, 0])) as Record<ContractCategory, number>;
@@ -175,6 +184,7 @@ function buildOffresCache(fingerprint: string): OffresCache {
       posted_at: row.posted_at, score: row.score, is_vie: row.is_vie,
       description_status: row.description_status, contract_category,
       has_cv: !!row.has_cv, has_lm: !!row.has_lm,
+      feedback: row.feedback_verdict ? { verdict: row.feedback_verdict, reason: row.feedback_reason } : null,
       // substr() compte des caractères, slice() des unités UTF-16 (émojis) : on
       // recoupe pour rendre exactement l’extrait d’avant.
       excerpt: (row.excerpt ?? "").slice(0, 1000), score_breakdown: row.score_breakdown,
@@ -261,7 +271,9 @@ export function searchOffres(opts: {
   });
 
   // Tris stables : les ex æquo gardent l’ordre intelligent, lui-même départagé par id.
-  if (opts.sortBy === "score") filtered.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  // Un 👎 reste en fin de liste quel que soit le tri par score.
+  const down = (o: CachedOffre) => Number(o.feedback?.verdict === "down");
+  if (opts.sortBy === "score") filtered.sort((a, b) => down(a) - down(b) || (b.score ?? 0) - (a.score ?? 0));
   if (opts.sortBy === "newest") filtered.sort((a, b) => compareText(b.posted_at ?? "", a.posted_at ?? ""));
   if (opts.sortBy === "oldest") {
     // Dates inconnues en fin de liste, comme en 3.4.10.
@@ -282,6 +294,7 @@ export function searchOffres(opts: {
       score_reason: parseJson<{ reason?: string } | null>(row.score_breakdown, null)?.reason ?? null,
       contract_category: row.contract_category,
       has_cv: row.has_cv, has_lm: row.has_lm,
+      feedback: row.feedback,
     })),
     total: filtered.length,
     pageSize: OFFER_PAGE_SIZE,
@@ -294,7 +307,9 @@ export function suggestedOffres(limit: number, untracked = false): Pick<OffreRow
   return getDb().prepare(`
     SELECT o.id, o.title, o.company, o.country, o.location, o.posted_at, o.score
     FROM offres o
-    ${untracked ? "WHERE NOT EXISTS(SELECT 1 FROM candidatures c WHERE c.offre_id = o.id)" : ""}
+    -- Une offre jugée « pas pour moi » n'est jamais suggérée.
+    WHERE NOT EXISTS(SELECT 1 FROM offre_feedback f WHERE f.offre_id = o.id AND f.verdict = 'down')
+    ${untracked ? "AND NOT EXISTS(SELECT 1 FROM candidatures c WHERE c.offre_id = o.id)" : ""}
     ORDER BY ${SMART_ORDER} LIMIT ?
   `).all(Math.max(1, Math.min(20, Math.trunc(limit)))) as Pick<OffreRow, "id" | "title" | "company" | "country" | "location" | "posted_at" | "score">[];
 }

@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { OffresList } from "./list";
 import { ScanButton } from "./scan-button";
 import { ReviewButton } from "./review-button";
+import { FeedbackSummary } from "@/components/app/offer-feedback";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,7 @@ export default async function OffresPage({ searchParams }: { searchParams: Promi
         subtitle={subtitle}
         actions={<><ReviewButton /><ScanButton /></>}
       />
+      <FeedbackSummary className="-mt-4 mb-6 max-w-[75ch]" />
       <OffresList initialResult={initial} initialVieOnly={vieOnly} initialMinScore={minScore} />
     </>
   );

@@ -132,6 +132,19 @@ CREATE TABLE IF NOT EXISTS candidatures (
   FOREIGN KEY (msg_doc_id) REFERENCES documents(id) ON DELETE SET NULL
 );
 
+-- Avis de l'utilisateur sur une offre (👍 / 👎) : mesure la justesse de la note.
+-- Une ligne par offre ; score_at garde la note affichée au moment de l'avis.
+CREATE TABLE IF NOT EXISTS offre_feedback (
+  offre_id INTEGER PRIMARY KEY,
+  verdict TEXT NOT NULL CHECK (verdict IN ('up', 'down')),
+  reason TEXT,
+  score_at INTEGER,
+  profile_hash TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (offre_id) REFERENCES offres(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT
