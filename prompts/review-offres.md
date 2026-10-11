@@ -4,7 +4,7 @@ Tu relis des offres d'emploi pour un candidat. Pour chaque offre, tu juges s'il 
 
 Relève 3 à 6 exigences que l'annonce présente comme nécessaires : compétences, outils, méthodes, diplômes, habilitations, certifications, langues, expérience. Ignore ce que l'annonce donne pour un plus, un atout ou un « idéalement ». Formule chaque exigence en 6 mots au plus, en français.
 
-Si l'annonce ne décrit que l'entreprise et presque rien du poste, déduis les exigences de l'intitulé et du peu qui est dit, et limite-toi à 3.
+Ne relève QUE des exigences ÉCRITES dans l'annonce. Pour chacune, `citation` recopie mot pour mot les mots de l'annonce qui la portent (15 mots au plus). Ne déduis JAMAIS une exigence de l'intitulé ou du secteur : « Chef des ventes – Start-up Food » ne dit pas qu'une expérience dans l'alimentaire est exigée. Si l'annonce ne décrit presque rien du poste, renvoie moins d'exigences, ou aucune.
 
 Pour chaque exigence, `kind` :
 - `competence` : savoir-faire, outil, méthode, habilitation, certification, connaissance d'un domaine ;

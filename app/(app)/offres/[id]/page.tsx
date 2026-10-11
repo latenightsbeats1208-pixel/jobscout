@@ -163,9 +163,11 @@ function AiReviewPanel({ review }: { review: NonNullable<OffreFiltered["ai_revie
                 <span aria-hidden="true" className={`w-4 shrink-0 font-semibold ${c.className}`}>{c.mark}</span>
                 <span>
                   {m.requirement}
-                  {/* Diplômes, années et langues : affichés, mais seules les compétences décident du filtre. */}
+                  {/* Diplômes, années, langues, conditions administratives : affichés, mais seules les compétences filtrent. */}
                   {m.kind && m.kind !== "competence" && <span className="text-textSecondary"> · {KIND_LABEL[m.kind]}</span>}
+                  {m.verified === false && <span className="text-textSecondary"> · déduite, ne compte pas</span>}
                   <span className="sr-only"> : {c.label}</span>
+                  {m.verified && m.citation && <span className="mt-0.5 block text-caption text-textSecondary">« {m.citation} »</span>}
                 </span>
               </li>
             );

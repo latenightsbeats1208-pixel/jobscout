@@ -17,7 +17,7 @@ import {
 } from "./text";
 import { assessSeniority, profileExperienceYears } from "./seniority";
 import { assessLanguage, profileLanguages, type Mastery } from "./language";
-import { aiExclusion, aiRelevance, type AiReview } from "./review";
+import { aiExclusion, aiRelevance, isReviewUsable, type AiReview } from "./review";
 
 export type { Corpus } from "./text";
 export { buildCorpus } from "./text";
@@ -401,8 +401,12 @@ function scorePrepared(
   offre: ScoringInput,
   o: PreparedOffer,
   corpus: Corpus,
-  review?: AiReview | null
+  rawReview?: AiReview | null
 ): ScoreResult {
+  // Une relecture sans aucune exigence écrite dans l'annonce n'a fait que deviner :
+  // elle ne remplace pas la note locale, et la raison le dit.
+  const shortAd = !!rawReview && !isReviewUsable(rawReview);
+  const review = shortAd ? null : rawReview;
   const title = scoreTitle(p, o, corpus);
   const skills = scoreSkills(p, o, corpus);
   const keywords = scoreKeywords(p, o);
@@ -443,6 +447,7 @@ function scorePrepared(
   const parts: string[] = [];
   if (exclusions.length) parts.push(`Hors critères : ${exclusions[0]}`);
   if (review?.reason) parts.push(`IA : ${review.reason}`);
+  if (shortAd) parts.push("relecture IA : annonce trop courte pour juger les exigences");
   // Sans relecture, le détail local ; avec, il n'ajouterait rien à celle-ci.
   if (!review) {
     if (title.best && title.score >= 50) parts.push(`intitulé proche de « ${title.best} »`);

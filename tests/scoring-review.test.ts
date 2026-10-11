@@ -9,6 +9,7 @@ import {
   aiExclusion,
   aiRelevance,
   isReviewCurrent,
+  isReviewUsable,
   offerHash,
   parseReview,
   profileHash,
@@ -19,25 +20,26 @@ import { EVAL_PROFILES } from "./eval/profiles";
 const meta = { profile_hash: "p", offer_hash: "o", model: "m" };
 const ba = EVAL_PROFILES.find((p) => p.key === "ba-junior")!.profile;
 
+/** Exigence telle que le modèle la rend ; par défaut, il cite l'exigence elle-même. */
+const mh = (requirement: string, covered: string, kind = "competence", citation = requirement) => ({ requirement, covered, kind, citation });
+/** Annonce qui contient chacun des textes donnés. */
+const adWith = (...texts: string[]) => ({ title: "Poste", description_text: texts.join(". ") });
+
 describe("réponse du modèle", () => {
   it("recalcule la part d'exigences couvertes au lieu de croire le modèle", () => {
+    const musts = [
+      mh("Recueil des besoins", "oui"),
+      mh("Rédaction de spécifications", "partiel"),
+      mh("SQL avancé", "non"),
+      mh("Assurance vie", "oui"),
+      // Ni le diplôme ni les années n'entrent dans la part de compétences couvertes.
+      mh("Master", "non", "diplome"),
+      mh("5 ans d'expérience", "non", "experience"),
+    ];
     const r = parseReview(
-      {
-        verdict: "a_tenter",
-        skills_fit: 95,
-        role_fit: 80,
-        reason: "Il manque SQL.",
-        must_haves: [
-          { requirement: "Recueil des besoins", covered: "oui", kind: "competence" },
-          { requirement: "Rédaction de spécifications", covered: "partiel", kind: "competence" },
-          { requirement: "SQL avancé", covered: "non", kind: "competence" },
-          { requirement: "Assurance vie", covered: "oui", kind: "competence" },
-          // Ni le diplôme ni les années n'entrent dans la part de compétences couvertes.
-          { requirement: "Master", covered: "non", kind: "diplome" },
-          { requirement: "5 ans d'expérience", covered: "non", kind: "experience" },
-        ],
-      },
-      meta
+      { verdict: "a_tenter", skills_fit: 95, role_fit: 80, reason: "Il manque SQL.", must_haves: musts },
+      meta,
+      adWith(...musts.map((m) => m.requirement))
     )!;
     expect(r.skills_fit).toBe(63); // (1 + 0,5 + 0 + 1) / 4
     expect(r.version).toBe(REVIEW_VERSION);
@@ -45,7 +47,8 @@ describe("réponse du modèle", () => {
 
   it("range le permis et ses semblables en conditions administratives, qui ne filtrent pas", () => {
     const kindOf = (requirement: string, kind = "competence") =>
-      parseReview({ verdict: "a_tenter", role_fit: 50, must_haves: [{ requirement, kind, covered: "non" }] }, meta)!.must_haves[0].kind;
+      parseReview({ verdict: "a_tenter", role_fit: 50, must_haves: [mh(requirement, "non", kind)] }, meta, adWith(requirement))!
+        .must_haves[0].kind;
     // Le modèle les a déjà classés en compétences (relectures réelles du banc) : le filet les rattrape.
     expect(kindOf("Permis B obligatoire")).toBe("administratif");
     expect(kindOf("Permis B titulaire")).toBe("administratif");
@@ -58,30 +61,74 @@ describe("réponse du modèle", () => {
     expect(kindOf("Maintenance de véhicule électrique")).toBe("competence");
     expect(kindOf("Permis B", "administratif")).toBe("administratif");
 
-    const r = parseReview(
-      {
-        verdict: "hors_profil",
-        role_fit: 100,
-        must_haves: [
-          { requirement: "Permis B titulaire", kind: "competence", covered: "non" },
-          { requirement: "Maintenance CVC", kind: "competence", covered: "oui" },
-        ],
-      },
-      meta
-    )!;
+    const musts = [mh("Permis B titulaire", "non"), mh("Maintenance CVC", "oui")];
+    const r = parseReview({ verdict: "hors_profil", role_fit: 100, must_haves: musts }, meta, adWith("Permis B titulaire", "Maintenance CVC"))!;
     expect(r.skills_fit).toBe(100);
     expect(aiExclusion(r)).toBeNull();
   });
 
   it("rejette une réponse sans verdict exploitable, accepte les verdicts anglais", () => {
-    expect(parseReview({ verdict: "peut-être", must_haves: [] }, meta)).toBeNull();
-    expect(parseReview(null, meta)).toBeNull();
-    expect(parseReview({ verdict: "mismatch", must_haves: [], skills_fit: 10, role_fit: 20 }, meta)!.verdict).toBe("hors_profil");
+    expect(parseReview({ verdict: "peut-être", must_haves: [] }, meta, adWith())).toBeNull();
+    expect(parseReview(null, meta, adWith())).toBeNull();
+    expect(parseReview({ verdict: "mismatch", must_haves: [], skills_fit: 10, role_fit: 20 }, meta, adWith())!.verdict).toBe("hors_profil");
+  });
+});
+
+describe("exigences citées ou déduites", () => {
+  // Annonce réelle du banc (France Travail, 354 caractères) : rien n'y parle d'alimentaire ni de management.
+  const shortAd = {
+    title: "Chef des Ventes & Compte Clé - Start-Up Food H/F",
+    description_text:
+      "Commercial (H/F) MANPOWER FRANCE - 77 - Combs-la-Ville. Manpower recrute pour son client un commercial terrain. " +
+      "Vous développez un portefeuille de clients et assurez le suivi des commandes.",
+  };
+
+  it("une exigence introuvable dans l'annonce est déduite : affichée, sans filtrer ni compter", () => {
+    const r = parseReview(
+      {
+        verdict: "hors_profil",
+        role_fit: 40,
+        must_haves: [
+          mh("Expérience secteur food", "non", "competence", "expérience dans l'agroalimentaire exigée"),
+          mh("Management d'équipe commerciale", "non", "competence", ""),
+        ],
+      },
+      meta,
+      shortAd
+    )!;
+    expect(r.must_haves.every((m) => !m.verified)).toBe(true);
+    expect(aiExclusion(r)).toBeNull();
+    expect(isReviewUsable(r)).toBe(false);
+  });
+
+  it("une citation reconnue malgré accents, majuscules et pluriels", () => {
+    const r = parseReview(
+      { verdict: "a_tenter", role_fit: 80, must_haves: [mh("Relais de protection", "non", "competence", "maitrise des Relais de protections")] },
+      meta,
+      adWith("Maîtrise des relais de protection")
+    )!;
+    expect(r.must_haves[0].verified).toBe(true);
+  });
+
+  it("dans la note, une relecture sans exigence vérifiable laisse la note locale", () => {
+    const offre = { ...shortAd, company: "Manpower", country: "France" };
+    const [local] = scoreOffresLocal(ba, [offre]);
+    const review = parseReview(
+      { verdict: "hors_profil", role_fit: 10, reason: "Autre métier.", must_haves: [mh("Expérience secteur food", "non", "competence", "")] },
+      meta,
+      shortAd
+    )!;
+    const [withAi] = scoreOffresLocal(ba, [offre], undefined, [review]);
+    expect(withAi.score).toBe(local.score);
+    expect(withAi.breakdown.ai_verdict).toBeUndefined();
+    expect(withAi.reason).toContain("annonce trop courte pour juger les exigences");
   });
 });
 
 describe("note et filtre de compétences", () => {
   const base = { ...meta, version: REVIEW_VERSION, model: "m", reviewed_at: "", reason: "" };
+  const verified = (requirement: string, covered: "oui" | "partiel" | "non") =>
+    ({ requirement, covered, kind: "competence" as const, citation: requirement, verified: true });
 
   it("le verdict ancre la note dans sa bande", () => {
     expect(aiRelevance({ ...base, must_haves: [], skills_fit: 40, role_fit: 40, verdict: "postuler" })).toBe(70);
@@ -89,11 +136,7 @@ describe("note et filtre de compétences", () => {
   });
 
   it("écarte une offre hors profil faute de compétences, pas faute de métier", () => {
-    const missing = [
-      { requirement: "Java", covered: "non" as const, kind: "competence" as const },
-      { requirement: "Spring Boot", covered: "non" as const, kind: "competence" as const },
-      { requirement: "Agilité", covered: "oui" as const, kind: "competence" as const },
-    ];
+    const missing = [verified("Java", "non"), verified("Spring Boot", "non"), verified("Agilité", "oui")];
     expect(aiExclusion({ ...base, must_haves: missing, skills_fit: 33, role_fit: 20, verdict: "hors_profil" })).toBe(
       "compétences indispensables absentes : Java, Spring Boot"
     );
@@ -101,18 +144,8 @@ describe("note et filtre de compétences", () => {
   });
 
   it("un diplôme ou des années manquants n'écartent pas : seules les compétences filtrent", () => {
-    const r = parseReview(
-      {
-        verdict: "hors_profil",
-        role_fit: 60,
-        must_haves: [
-          { requirement: "Master école de commerce", covered: "non", kind: "diplome" },
-          { requirement: "4 ans de vente B2B", covered: "non", kind: "experience" },
-          { requirement: "Prospection", covered: "oui", kind: "competence" },
-        ],
-      },
-      meta
-    )!;
+    const musts = [mh("Master école de commerce", "non", "diplome"), mh("4 ans de vente B2B", "non", "experience"), mh("Prospection", "oui")];
+    const r = parseReview({ verdict: "hors_profil", role_fit: 60, must_haves: musts }, meta, adWith(...musts.map((m) => m.requirement)))!;
     expect(r.skills_fit).toBe(100);
     expect(aiExclusion(r)).toBeNull();
   });
@@ -128,7 +161,7 @@ describe("note et filtre de compétences", () => {
   it("dans la note, la relecture remplace la pertinence locale et son filtre passe en premier", () => {
     const offre = { title: "Business Analyst Assurance", company: "X", country: "France", description_text: "Recueil des besoins, spécifications fonctionnelles et recette en assurance vie." };
     const [local] = scoreOffresLocal(ba, [offre]);
-    const review = { ...base, must_haves: [{ requirement: "Java", covered: "non" as const, kind: "competence" as const }], skills_fit: 0, role_fit: 30, verdict: "hors_profil" as const, reason: "Il vous manque Java." };
+    const review = { ...base, must_haves: [verified("Java", "non")], skills_fit: 0, role_fit: 30, verdict: "hors_profil" as const, reason: "Il vous manque Java." };
     const [withAi] = scoreOffresLocal(ba, [offre], undefined, [review]);
     expect(local.breakdown.excluded).toBeUndefined();
     expect(withAi.breakdown.excluded).toMatch(/^compétences indispensables absentes/);
@@ -165,8 +198,8 @@ beforeAll(async () => {
       calls.push({ model: body.model, count: offres.length });
       const results = offres.map((o) =>
         o.intitule.includes("Java")
-          ? { offre_index: o.offre_index, must_haves: [{ requirement: "Java", kind: "competence", covered: "non" }, { requirement: "Spring", kind: "competence", covered: "non" }], role_fit: 20, verdict: "hors_profil", reason: "Il vous manque Java." }
-          : { offre_index: o.offre_index, must_haves: [{ requirement: "Recette", kind: "competence", covered: "oui" }], role_fit: 100, verdict: "postuler", reason: "Profil couvert." }
+          ? { offre_index: o.offre_index, must_haves: [{ requirement: "Java", kind: "competence", covered: "non", citation: "Java" }, { requirement: "Spring", kind: "competence", covered: "non", citation: "Spring" }], role_fit: 20, verdict: "hors_profil", reason: "Il vous manque Java." }
+          : { offre_index: o.offre_index, must_haves: [{ requirement: "Recette", kind: "competence", covered: "oui", citation: "Recette" }], role_fit: 100, verdict: "postuler", reason: "Profil couvert." }
       );
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({

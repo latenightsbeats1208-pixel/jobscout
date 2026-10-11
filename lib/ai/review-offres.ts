@@ -35,8 +35,9 @@ const REVIEW_TOOL: StructuredTool = {
                   requirement: { type: "string" },
                   kind: { type: "string", enum: ["competence", "diplome", "experience", "langue", "administratif"] },
                   covered: { type: "string", enum: ["oui", "partiel", "non"] },
+                  citation: { type: "string" },
                 },
-                required: ["requirement", "kind", "covered"],
+                required: ["requirement", "kind", "covered", "citation"],
               },
             },
             role_fit: { type: "number", minimum: 0, maximum: 100 },
@@ -145,7 +146,7 @@ async function reviewBatch(profile: ProfileFull, offres: ReviewInput[]): Promise
   const pHash = profileHash(profile);
   return offres.map((o, i) => {
     const raw = results.find((r) => Number(r?.offre_index) === i) ?? (results.length === offres.length ? results[i] : null);
-    return parseReview(raw, { profile_hash: pHash, offer_hash: offerHash(o), model: res.model });
+    return parseReview(raw, { profile_hash: pHash, offer_hash: offerHash(o), model: res.model }, o);
   });
 }
 

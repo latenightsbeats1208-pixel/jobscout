@@ -12,7 +12,7 @@ import type { ProfileFull } from "@/lib/cv/types";
  */
 
 /** À changer à chaque modification du prompt ou du barème : les relectures antérieures sont alors refaites. */
-export const REVIEW_VERSION = "review-v3";
+export const REVIEW_VERSION = "review-v4";
 
 export type Coverage = "oui" | "partiel" | "non";
 export type Verdict = "postuler" | "a_tenter" | "hors_profil";
@@ -25,7 +25,19 @@ export type Verdict = "postuler" | "a_tenter" | "hors_profil";
  * dans un CV — son absence ne prouve rien.
  */
 export type RequirementKind = "competence" | "diplome" | "experience" | "langue" | "administratif";
-export type MustHave = { requirement: string; covered: Coverage; kind: RequirementKind };
+export type MustHave = {
+  requirement: string;
+  covered: Coverage;
+  kind: RequirementKind;
+  /** Mots de l'annonce qui portent l'exigence, cités par le modèle. */
+  citation: string;
+  /**
+   * La citation se retrouve dans l'annonce. Une exigence non vérifiée a été
+   * DÉDUITE (de l'intitulé, le plus souvent) : elle est affichée, mais ne
+   * filtre pas et ne compte pas dans la part de compétences couvertes.
+   */
+  verified: boolean;
+};
 
 export type AiReview = {
   version: string;
@@ -103,10 +115,35 @@ const clamp = (n: unknown, lo = 0, hi = 100): number =>
  * inexploitable. La part de compétences couvertes est recalculée à partir des
  * exigences : on ne fait pas confiance à l'arithmétique du modèle.
  */
+/** Mots (2 lettres et plus) d'un texte, sans accents ni ponctuation. */
+function words(text: string): string[] {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .split(/[^a-z0-9+#]+/)
+    .filter((w) => w.length >= 2);
+}
+
+/**
+ * La citation est-elle dans l'annonce ? 80 % de ses mots au moins doivent s'y
+ * trouver : le modèle recopie rarement à la virgule près (accents, pluriels,
+ * ponctuation), mais une exigence inventée ne passe pas.
+ */
+export function isCitationInAd(citation: string, adWords: Set<string>): boolean {
+  const cited = words(citation);
+  if (!cited.length) return false;
+  const found = cited.filter((w) => adWords.has(w) || (w.length > 4 && adWords.has(w.replace(/s$/, "")))).length;
+  return found / cited.length >= 0.8;
+}
+
 export function parseReview(
   raw: unknown,
-  meta: { profile_hash: string; offer_hash: string; model: string }
+  meta: { profile_hash: string; offer_hash: string; model: string },
+  /** Titre et description de l'annonce relue : de quoi vérifier les citations. */
+  ad: { title: string; description_text: string }
 ): AiReview | null {
+  const adWords = new Set(words(`${ad.title} ${ad.description_text}`));
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   const verdict = VERDICTS[String(r.verdict ?? "").toLowerCase()];
@@ -119,11 +156,15 @@ export function parseReview(
       // Nature absente ou inconnue : compétence, le cas de loin le plus courant.
       let kind = KINDS[String(x.kind ?? "").toLowerCase()] ?? "competence";
       if (kind === "competence" && ADMINISTRATIVE.test(requirement)) kind = "administratif";
-      return requirement && covered ? { requirement: requirement.slice(0, 80), covered, kind } : null;
+      const citation = typeof x.citation === "string" ? x.citation.trim().slice(0, 160) : "";
+      return requirement && covered
+        ? { requirement: requirement.slice(0, 80), covered, kind, citation, verified: isCitationInAd(citation, adWords) }
+        : null;
     })
     .filter((m): m is MustHave => m !== null)
     .slice(0, 8);
-  const skills = must_haves.filter((m) => m.kind === "competence");
+  // Seules les compétences ÉCRITES dans l'annonce comptent : une exigence déduite ne prouve rien.
+  const skills = must_haves.filter((m) => m.kind === "competence" && m.verified);
   const skills_fit = skills.length
     ? Math.round((100 * skills.reduce((s, m) => s + (m.covered === "oui" ? 1 : m.covered === "partiel" ? 0.5 : 0), 0)) / skills.length)
     : clamp(r.skills_fit ?? 50);
@@ -161,10 +202,19 @@ export function aiRelevance(r: AiReview): number {
  */
 export function aiExclusion(r: AiReview): string | null {
   if (r.verdict !== "hors_profil" || r.skills_fit >= 40) return null;
-  if (!r.must_haves.some((m) => m.kind === "competence")) return null;
+  if (!r.must_haves.some((m) => m.kind === "competence" && m.verified)) return null;
   const missing = r.must_haves
-    .filter((m) => m.kind === "competence" && m.covered === "non")
+    .filter((m) => m.kind === "competence" && m.verified && m.covered === "non")
     .map((m) => m.requirement)
     .slice(0, 3);
   return `compétences indispensables absentes${missing.length ? ` : ${missing.join(", ")}` : ""}`;
+}
+
+/**
+ * Une relecture ne sert que si au moins une exigence est écrite dans l'annonce.
+ * Sinon (annonce de trois lignes, ou qui ne parle que de l'entreprise), le
+ * modèle n'a fait que deviner : la note locale reste en place.
+ */
+export function isReviewUsable(r: AiReview): boolean {
+  return r.must_haves.some((m) => m.verified);
 }
