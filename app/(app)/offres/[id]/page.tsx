@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowUpRight, AlertTriangle, CalendarDays, MapPin } from "lucide-react";
-import { getOffre } from "@/lib/db/offres";
+import { getOffre, type OffreFiltered } from "@/lib/db/offres";
 import { listDocuments, offreFolderPath } from "@/lib/db/documents";
 import { getDb } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
@@ -96,6 +96,7 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
               {offre.score_breakdown.reason && <p className="mt-5 border-t border-border pt-4 text-small text-textSecondary">{offre.score_breakdown.reason}</p>}
             </section>
           )}
+          {offre.ai_review && offre.score_breakdown?.ai_verdict && <AiReviewPanel review={offre.ai_review} />}
         </aside>
 
         <article className="order-2 min-w-0 xl:order-1">
@@ -125,5 +126,48 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
       <div className="mb-1.5 flex justify-between gap-3 text-small"><span className="text-textSecondary">{label}</span><span className="font-semibold tabular-nums">{Math.round(value)}</span></div>
       <div className="h-1.5 overflow-hidden rounded-full bg-surfaceHover"><div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div>
     </div>
+  );
+}
+
+const VERDICT_LABEL: Record<string, string> = {
+  postuler: "Vous pouvez postuler",
+  a_tenter: "À tenter",
+  hors_profil: "Hors de votre profil",
+};
+const KIND_LABEL: Record<string, string> = { diplome: "diplôme", experience: "expérience", langue: "langue" };
+const COVERAGE_MARK: Record<string, { mark: string; label: string; className: string }> = {
+  oui: { mark: "✓", label: "couvert", className: "text-success" },
+  partiel: { mark: "≈", label: "partiellement couvert", className: "text-textSecondary" },
+  non: { mark: "✗", label: "non couvert", className: "text-danger" },
+};
+
+/** Exigences indispensables relevées par l'IA, et ce que le profil en couvre. */
+function AiReviewPanel({ review }: { review: NonNullable<OffreFiltered["ai_review"]> }) {
+  return (
+    <section aria-labelledby="ai-review-title" className="glass-panel p-5">
+      <h2 id="ai-review-title" className="text-h3">Relecture par l&apos;IA</h2>
+      <p className="mt-1 text-small text-textSecondary">
+        {VERDICT_LABEL[review.verdict] ?? review.verdict} · {review.skills_fit} % des compétences indispensables couvertes
+      </p>
+      {review.must_haves.length > 0 && (
+        <ul className="mt-4 space-y-2">
+          {review.must_haves.map((m) => {
+            const c = COVERAGE_MARK[m.covered];
+            return (
+              <li key={m.requirement} className="flex items-start gap-2 text-small">
+                <span aria-hidden="true" className={`w-4 shrink-0 font-semibold ${c.className}`}>{c.mark}</span>
+                <span>
+                  {m.requirement}
+                  {/* Diplômes, années et langues : affichés, mais seules les compétences décident du filtre. */}
+                  {m.kind && m.kind !== "competence" && <span className="text-textSecondary"> · {KIND_LABEL[m.kind]}</span>}
+                  <span className="sr-only"> : {c.label}</span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {review.reason && <p className="mt-4 border-t border-border pt-4 text-small text-textSecondary">{review.reason}</p>}
+    </section>
   );
 }

@@ -1,15 +1,16 @@
 import "server-only";
 import type { ProfileFull } from "@/lib/cv/types";
-import { getDb, transaction } from "@/lib/db";
+import { getDb, parseJson, transaction } from "@/lib/db";
 import { setOffreScore } from "@/lib/db/offres";
 import { buildCorpus, scoreOffresLocal, type Corpus, type ScoringInput } from "./local";
+import { isReviewCurrent, offerHash, profileHash, type AiReview } from "./review";
 
-type ScoringRow = ScoringInput & { id: number };
+type ScoringRow = ScoringInput & { id: number; ai_review: string | null };
 
 /** Le strict nécessaire à la note, pour toutes les offres de la base. */
 export function loadScoringRows(): ScoringRow[] {
   const rows = getDb()
-    .prepare("SELECT id, title, company, country, location, description_text, contract_type FROM offres")
+    .prepare("SELECT id, title, company, country, location, description_text, contract_type, ai_review FROM offres")
     .all() as ScoringRow[];
   return rows.map((r) => ({ ...r }));
 }
@@ -19,14 +20,25 @@ export function loadCorpus(): Corpus {
   return buildCorpus(loadScoringRows());
 }
 
+/** Relectures par l'IA encore valables pour ce profil, alignées sur `rows`. */
+export function currentReviews(profile: ProfileFull, rows: ScoringRow[]): (AiReview | null)[] {
+  const pHash = profileHash(profile);
+  return rows.map((r) => {
+    const review = parseJson<AiReview | null>(r.ai_review, null);
+    return isReviewCurrent(review, pHash, offerHash(r)) ? review : null;
+  });
+}
+
 /**
- * Recalcule la note de TOUTES les offres avec la rareté mesurée sur l'ensemble.
- * Pendant un scan, les premiers lots sont notés avec une rareté calculée sur
- * moins d'offres : ce recalcul final remet tout le monde sur la même échelle.
+ * Recalcule la note de TOUTES les offres avec la rareté mesurée sur l'ensemble,
+ * en appliquant les relectures par l'IA encore valables (même profil, même
+ * annonce). Pendant un scan, les premiers lots sont notés avec une rareté
+ * calculée sur moins d'offres : ce recalcul final remet tout le monde sur la
+ * même échelle.
  */
 export function rescoreAllOffres(profile: ProfileFull): number {
   const rows = loadScoringRows();
-  const results = scoreOffresLocal(profile, rows, buildCorpus(rows));
+  const results = scoreOffresLocal(profile, rows, buildCorpus(rows), currentReviews(profile, rows));
   transaction(() => results.forEach((r, i) => setOffreScore(rows[i].id, r)));
   return rows.length;
 }

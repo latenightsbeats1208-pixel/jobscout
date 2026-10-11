@@ -17,6 +17,7 @@ import {
 } from "./text";
 import { assessSeniority, profileExperienceYears } from "./seniority";
 import { assessLanguage, profileLanguages, type Mastery } from "./language";
+import { aiExclusion, aiRelevance, type AiReview } from "./review";
 
 export type { Corpus } from "./text";
 export { buildCorpus } from "./text";
@@ -37,6 +38,8 @@ export type ScoreResult = {
     seniority: number;
     /** Motif d'exclusion : l'offre est hors critères, quelle que soit sa note. */
     excluded?: string;
+    /** Verdict de la relecture par l'IA, quand elle a remplacé la pertinence locale. */
+    ai_verdict?: string;
   };
   reason: string;
 };
@@ -397,7 +400,8 @@ function scorePrepared(
   p: PreparedProfile,
   offre: ScoringInput,
   o: PreparedOffer,
-  corpus: Corpus
+  corpus: Corpus,
+  review?: AiReview | null
 ): ScoreResult {
   const title = scoreTitle(p, o, corpus);
   const skills = scoreSkills(p, o, corpus);
@@ -411,15 +415,21 @@ function scorePrepared(
   // 1. Filtres. Une offre qui en échoue un est « hors critères » : visible en
   //    fin de liste, note plafonnée.
   const exclusions: string[] = [];
+  // Les compétences d'abord, quand l'IA a pu les juger (voir lib/scoring/review.ts) :
+  // la note locale ne sait pas les juger assez sûrement pour écarter une offre.
+  const aiExcluded = review ? aiExclusion(review) : null;
+  if (aiExcluded) exclusions.push(aiExcluded);
   if (language.excluded) exclusions.push(language.excluded);
   if (country === 0) exclusions.push(`hors des pays cibles (${offre.country})`);
   if (seniority.excluded) exclusions.push(seniority.excluded);
 
-  // 2. Pertinence, parmi les offres acceptables.
-  const relevance =
-    WEIGHTS.title * title.score +
-    WEIGHTS.skills * 100 * Math.min(1, skills.score / SKILLS_FULL_CREDIT) +
-    WEIGHTS.keywords * keywords.score;
+  // 2. Pertinence, parmi les offres acceptables. Relue par l'IA, c'est son
+  //    jugement (exigences couvertes, métier) qui fait foi.
+  const relevance = review
+    ? aiRelevance(review)
+    : WEIGHTS.title * title.score +
+      WEIGHTS.skills * 100 * Math.min(1, skills.score / SKILLS_FULL_CREDIT) +
+      WEIGHTS.keywords * keywords.score;
 
   // 3. Ajustements : niveaux partiels (expérience, langue), puis préférences.
   const durationBonus = (duration.score / 100) * 5; // jusqu'à +5, V.I.E seulement
@@ -432,13 +442,17 @@ function scorePrepared(
 
   const parts: string[] = [];
   if (exclusions.length) parts.push(`Hors critères : ${exclusions[0]}`);
-  if (title.best && title.score >= 50) parts.push(`intitulé proche de « ${title.best} »`);
-  if (skills.anchoredMatched.length) {
-    parts.push(`compétences ancrées : ${skills.anchoredMatched.slice(0, 3).join(", ")}`);
-  } else if (skills.matched.length) {
-    parts.push(`compétences : ${skills.matched.slice(0, 3).join(", ")}`);
-  } else if (p.skills.length) {
-    parts.push("aucune compétence du profil reconnue dans l'annonce");
+  if (review?.reason) parts.push(`IA : ${review.reason}`);
+  // Sans relecture, le détail local ; avec, il n'ajouterait rien à celle-ci.
+  if (!review) {
+    if (title.best && title.score >= 50) parts.push(`intitulé proche de « ${title.best} »`);
+    if (skills.anchoredMatched.length) {
+      parts.push(`compétences ancrées : ${skills.anchoredMatched.slice(0, 3).join(", ")}`);
+    } else if (skills.matched.length) {
+      parts.push(`compétences : ${skills.matched.slice(0, 3).join(", ")}`);
+    } else if (p.skills.length) {
+      parts.push("aucune compétence du profil reconnue dans l'annonce");
+    }
   }
   if (!seniority.excluded && seniority.note) parts.push(seniority.note);
   if (!language.excluded && language.note) parts.push(language.note);
@@ -459,6 +473,7 @@ function scorePrepared(
       title: title.score,
       seniority: seniority.score,
       ...(exclusions.length ? { excluded: exclusions.join(" ; ") } : {}),
+      ...(review ? { ai_verdict: review.verdict } : {}),
     },
     reason,
   };
@@ -478,8 +493,14 @@ export function scoreOffreLocal(profile: ProfileFull, offre: ScoringInput, corpu
  * Note d'un lot d'offres. La rareté des mots se mesure sur `corpus` quand il
  * est fourni (toutes les offres de la base), sinon sur le lot lui-même.
  */
-export function scoreOffresLocal(profile: ProfileFull, offres: ScoringInput[], corpus?: Corpus): ScoreResult[] {
+export function scoreOffresLocal(
+  profile: ProfileFull,
+  offres: ScoringInput[],
+  corpus?: Corpus,
+  /** Relectures par l'IA alignées sur `offres` ; l'appelant n'y met que celles encore valables. */
+  reviews?: (AiReview | null | undefined)[]
+): ScoreResult[] {
   const c = corpus ?? buildCorpus(offres);
   const p = prepareProfile(profile, c);
-  return offres.map((o) => scorePrepared(profile, p, o, prepareOffer(o), c));
+  return offres.map((o, i) => scorePrepared(profile, p, o, prepareOffer(o), c, reviews?.[i]));
 }

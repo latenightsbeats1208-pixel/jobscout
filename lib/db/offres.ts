@@ -1,7 +1,8 @@
 import "server-only";
 import { getDb, asJson, parseJson } from "./index";
 import type { ScrapedOffre } from "@/lib/scrapers/base";
-import type { ScoreResult } from "@/lib/ai/score-offre";
+import type { ScoreResult } from "@/lib/scoring/local";
+import type { AiReview } from "@/lib/scoring/review";
 import { classifyContract, CONTRACT_ORDER, type ContractCategory } from "@/lib/contracts";
 
 export type { ScrapedOffre };
@@ -36,8 +37,12 @@ export type OffreRow = {
     seniority?: number;
     /** Motif d'exclusion : l'offre est hors critères. */
     excluded?: string;
+    /** Verdict de la relecture par l'IA, quand elle a eu lieu. */
+    ai_verdict?: string;
     reason?: string;
   } | null;
+  /** Relecture par l'IA (exigences indispensables couvertes ou non), ou null. */
+  ai_review: AiReview | null;
   is_vie: number;
   raw_payload: string | null;
   scrape_errors: string | null;
@@ -358,10 +363,17 @@ export function upsertOffreFromSource(source: string, o: ScrapedOffre): number {
   return row?.id ?? 0;
 }
 
-export function setOffreScore(id: number, score: ScoreResult) {
+/** Une note et son détail, quelle que soit la version de la note qui l'a produite. */
+export type StoredScore = Pick<ScoreResult, "score" | "reason"> & { breakdown: object };
+
+export function setOffreScore(id: number, score: StoredScore) {
   getDb()
     .prepare("UPDATE offres SET score = ?, score_breakdown = ? WHERE id = ?")
     .run(score.score, asJson({ ...score.breakdown, reason: score.reason }), id);
+}
+
+export function setOffreReview(id: number, review: AiReview) {
+  getDb().prepare("UPDATE offres SET ai_review = ? WHERE id = ?").run(asJson(review), id);
 }
 
 export function listOffres(opts?: {
@@ -402,6 +414,7 @@ export function listOffres(opts?: {
   return rows.map((r) => ({
     ...r,
     score_breakdown: parseJson(r.score_breakdown, null),
+    ai_review: parseJson(r.ai_review, null),
     has_cv: !!r.has_cv,
     has_lm: !!r.has_lm,
     has_msg: !!r.has_msg,
@@ -431,6 +444,7 @@ export function getOffre(id: number): OffreFiltered | null {
   return {
     ...r,
     score_breakdown: parseJson(r.score_breakdown, null),
+    ai_review: parseJson(r.ai_review, null),
     has_cv: !!r.has_cv,
     has_lm: !!r.has_lm,
     has_msg: !!r.has_msg,

@@ -2,6 +2,7 @@ import { offresCounts, parseMinScore, searchOffres } from "@/lib/db/offres";
 import { PageHeader } from "@/components/app/page-header";
 import { OffresList } from "./list";
 import { ScanButton } from "./scan-button";
+import { ReviewButton } from "./review-button";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export default async function OffresPage({ searchParams }: { searchParams: Promi
         eyebrow="Découvrir"
         title="Vos prochaines opportunités"
         subtitle={subtitle}
-        actions={<ScanButton />}
+        actions={<><ReviewButton /><ScanButton /></>}
       />
       <OffresList initialResult={initial} initialVieOnly={vieOnly} initialMinScore={minScore} />
     </>

@@ -16,7 +16,6 @@ type EvalProfile = { key: string; profile: ProfileFull };
 const base = {
   sources_enabled: ["francetravail", "wttj", "hellowork", "talent"],
   extraction_confidence: 90,
-  educations: [],
 };
 
 export const EVAL_PROFILES: EvalProfile[] = [
@@ -24,6 +23,7 @@ export const EVAL_PROFILES: EvalProfile[] = [
     key: "dev-dotnet",
     profile: {
       ...base,
+      educations: [{ school: "École d'ingénieurs", degree: "Diplôme d'ingénieur", field: "Informatique", start_date: "2016-09", end_date: "2021-06" }],
       summary: "Développeur .NET / C# full stack, cinq ans sur des applications web métier.",
       sectors: ["tech", "services", "start-up"],
       target_countries: ["France"],
@@ -56,6 +56,7 @@ export const EVAL_PROFILES: EvalProfile[] = [
     key: "ba-junior",
     profile: {
       ...base,
+      educations: [{ school: "Université", degree: "Master", field: "MIAGE", start_date: "2022-09", end_date: "2024-08" }],
       summary: "Business analyst junior en assurance : recueil des besoins, spécifications, recette.",
       sectors: ["tech", "services", "start-up"],
       target_countries: ["France"],
@@ -96,6 +97,7 @@ export const EVAL_PROFILES: EvalProfile[] = [
     key: "bizdev",
     profile: {
       ...base,
+      educations: [{ school: "École de commerce", degree: "Bachelor", field: "Commerce et vente", start_date: "2020-09", end_date: "2023-08" }],
       summary: "Business developer B2B SaaS : prospection, cycle de vente complet, closing.",
       sectors: ["tech", "services", "start-up"],
       target_countries: ["France", "Belgique"],
@@ -135,6 +137,7 @@ export const EVAL_PROFILES: EvalProfile[] = [
     key: "data-eng-senior",
     profile: {
       ...base,
+      educations: [{ school: "École d'ingénieurs", degree: "Diplôme d'ingénieur", field: "Informatique et données", start_date: "2015-09", end_date: "2018-08" }],
       summary: "Data engineer senior : pipelines Spark et Databricks, orchestration, cloud.",
       sectors: ["tech", "services", "start-up"],
       target_countries: ["France", "Luxembourg", "Suisse", "Belgique"],
@@ -176,6 +179,7 @@ export const EVAL_PROFILES: EvalProfile[] = [
     key: "tech-maintenance",
     profile: {
       ...base,
+      educations: [{ school: "Lycée professionnel", degree: "BTS", field: "Maintenance des systèmes", start_date: "2021-09", end_date: "2023-06" }],
       summary: "Technicien de maintenance multitechnique, habilité électrique, dépannage industriel.",
       sectors: ["tech", "services", "start-up"],
       target_countries: ["France"],

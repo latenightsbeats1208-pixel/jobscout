@@ -28,6 +28,9 @@ export function getDb(): DatabaseSync {
   try {
     db.exec(`ALTER TABLE profile ADD COLUMN target_titles TEXT NOT NULL DEFAULT '[]'`);
   } catch {}
+  try {
+    db.exec(`ALTER TABLE offres ADD COLUMN ai_review TEXT`);
+  } catch {}
 
   _db = db;
   return db;

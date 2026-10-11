@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS offres (
   is_vie INTEGER NOT NULL DEFAULT 0,
   raw_payload TEXT,
   scrape_errors TEXT,
+  ai_review TEXT,
   UNIQUE(source, source_id)
 );
 
