@@ -101,6 +101,7 @@ export function buildProfileFromExtraction(
     summary: ex.summary,
     raw_cv_text: rawCvText,
     sectors: [],
+    target_titles: [...new Set((ex.target_titles ?? []).map((t) => t.trim()).filter(Boolean))].slice(0, 3),
     target_countries: [],
     sources_enabled: [],
     // Même défaut que le schéma zod, la colonne SQL et l'écran de préférences.

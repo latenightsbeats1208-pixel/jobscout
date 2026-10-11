@@ -25,6 +25,9 @@ export function getDb(): DatabaseSync {
       `ALTER TABLE profile ADD COLUMN preferred_contracts TEXT NOT NULL DEFAULT '["cdi","cdd"]'`
     );
   } catch {}
+  try {
+    db.exec(`ALTER TABLE profile ADD COLUMN target_titles TEXT NOT NULL DEFAULT '[]'`);
+  } catch {}
 
   _db = db;
   return db;

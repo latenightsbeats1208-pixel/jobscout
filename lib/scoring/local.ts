@@ -1,117 +1,302 @@
 import "server-only";
 import type { ProfileFull, Language } from "@/lib/cv/types";
 import { classifyContract, type ContractCategory } from "@/lib/contracts";
+import {
+  ABBREVIATIONS,
+  TITLE_NOISE,
+  buildCorpus,
+  containsPhrase,
+  idf,
+  informativeness,
+  joinTokens,
+  normalize,
+  phraseIdf,
+  titleIdf,
+  tokenize,
+  type Corpus,
+} from "./text";
+import { assessSeniority, profileExperienceYears } from "./seniority";
+
+export type { Corpus } from "./text";
+export { buildCorpus } from "./text";
 
 export type ScoreResult = {
   score: number;
   breakdown: {
+    /** Mots-clés de recherche (anciennement « secteur »), pondérés par leur rareté. */
     sector: number;
     skills: number;
     country: number;
     language: number;
     duration: number;
     contract: number;
+    /** Proximité entre l'intitulé de l'offre et les postes visés. */
+    title: number;
+    /** Adéquation entre l'expérience demandée et celle du profil. */
+    seniority: number;
+    /** Motif d'exclusion : l'offre est hors critères, quelle que soit sa note. */
+    excluded?: string;
   };
   reason: string;
 };
 
-const STOPWORDS = new Set([
-  "le", "la", "les", "un", "une", "des", "de", "du", "et", "ou", "à", "au", "aux", "en",
-  "the", "a", "an", "of", "and", "or", "to", "in", "on", "for", "with",
-]);
+/**
+ * Poids de la note de base. L'intitulé et les compétences portent l'essentiel :
+ * ce sont eux qui disent si l'offre est le bon métier. Les mots-clés de
+ * recherche pèsent peu, car chaque offre trouvée les contient déjà — c'est la
+ * recherche qui l'a ramenée.
+ */
+const WEIGHTS = { title: 0.4, skills: 0.35, keywords: 0.1, country: 0.15 };
 
-function normalize(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
+/** Plafond d'une offre hors critères : elle reste visible, en fin de liste. */
+const EXCLUDED_CAP = 15;
+
+// ----------------------------------------------------------------------------
+// Préparation (une fois par lot)
+// ----------------------------------------------------------------------------
+
+type PreparedOffer = {
+  titleTokens: string[];
+  titleJoined: string;
+  bodyTokens: Set<string>;
+  bodyJoined: string;
+  requirementTokens: string[];
+};
+
+const REQUIREMENT_HEADERS = [
+  "profil recherche", "votre profil", "le profil", "profil souhaite", "competences requises",
+  "competences attendues", "vos competences", "qualifications", "requirements", "what you'll bring",
+  "what you will bring", "what we're looking for", "what we are looking for", "you have", "your profile",
+  "who you are", "ce que nous recherchons", "vous etes", "vous avez", "experience requise", "must have",
+];
+
+/** Bloc « profil recherché » de l'annonce, ou à défaut son début. */
+function requirementSection(description: string): string {
+  const text = normalize(description);
+  let at = -1;
+  for (const h of REQUIREMENT_HEADERS) {
+    const i = text.indexOf(h);
+    if (i >= 0 && (at < 0 || i < at)) at = i;
+  }
+  return at >= 0 ? text.slice(at, at + 1500) : text.slice(0, 3000);
 }
 
-function tokenize(s: string): string[] {
-  return normalize(s)
-    .split(/[^a-z0-9+#.]+/)
-    .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
+function prepareOffer(o: ScoringInput): PreparedOffer {
+  // La ville ou le pays repris dans le titre (« … - Rouen ») ne disent rien du métier.
+  const place = new Set(tokenize(`${o.location ?? ""} ${o.country ?? ""}`));
+  const titleTokens = tokenize(o.title).filter((t) => !TITLE_NOISE.has(t) && !place.has(t));
+  const body = tokenize(`${o.title}\n${o.description_text}`);
+  return {
+    titleTokens,
+    titleJoined: joinTokens(titleTokens),
+    bodyTokens: new Set(body),
+    bodyJoined: joinTokens(body),
+    requirementTokens: [...new Set(tokenize(requirementSection(o.description_text)))],
+  };
 }
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const TRAINEE_TITLE = /\b(stage|stagiaire|intern|internship|alternance|alternant|apprenti|apprentie|apprentice|trainee)/;
+
+type PreparedSkill = { name: string; tokens: string[]; anchored: boolean; info: number };
+
+type PreparedProfile = {
+  targets: { label: string; tokens: string[]; weight: number }[];
+  skills: PreparedSkill[];
+  keywords: { tokens: string[]; info: number }[];
+  vocabulary: Set<string>;
+  years: number | null;
+};
+
+function prepareProfile(profile: ProfileFull, corpus: Corpus): PreparedProfile {
+  // Postes visés déclarés, puis les intitulés des expériences (les trois plus
+  // récentes), qui comptent moins : on ne cherche pas forcément à refaire son
+  // dernier poste. Un stage ou une alternance n'est jamais un poste visé.
+  const declared = (profile.target_titles ?? []).filter((t) => t.trim());
+  const past = profile.experiences
+    .map((e) => e.title)
+    .filter((t) => t && !TRAINEE_TITLE.test(normalize(t)))
+    .slice(0, 3);
+  const targets = [
+    ...declared.map((label) => ({ label, weight: 1 })),
+    ...past.map((label) => ({ label, weight: declared.length ? 0.6 : 0.9 })),
+  ]
+    .map((t) => ({ ...t, tokens: [...new Set(tokenize(t.label).filter((x) => !TITLE_NOISE.has(x)))] }))
+    .filter((t) => t.tokens.length);
+
+  const skills = profile.skills
+    .map((s) => {
+      const tokens = tokenize(s.name);
+      return {
+        name: s.name,
+        tokens,
+        anchored: s.evidence_experience_ids.length > 0,
+        info: Math.max(0.25, informativeness(corpus, phraseIdf(corpus, tokens))),
+      };
+    })
+    .filter((s) => s.tokens.length);
+
+  const keywords = profile.sectors
+    .map((k) => tokenize(k))
+    .filter((tokens) => tokens.length)
+    .map((tokens) => ({ tokens, info: informativeness(corpus, phraseIdf(corpus, tokens)) }));
+
+  const vocabularyText = [
+    ...profile.skills.map((s) => s.name),
+    ...declared,
+    ...profile.experiences.flatMap((e) => [e.title, e.description ?? "", ...e.bullet_points, ...e.skills_used]),
+    ...profile.educations.flatMap((e) => [e.degree ?? "", e.field ?? "", e.description ?? ""]),
+    profile.summary ?? "",
+  ].join("\n");
+
+  return {
+    targets,
+    skills,
+    keywords,
+    vocabulary: new Set(tokenize(vocabularyText)),
+    years: profileExperienceYears(profile),
+  };
 }
 
-function containsTerm(text: string, term: string): boolean {
-  const t = normalize(term).trim();
-  if (t.length < 2) return false;
-  const re = new RegExp(`(^|[^a-z0-9+#])${escapeRegex(t)}(?=$|[^a-z0-9+#])`, "g");
-  return re.test(text);
-}
+// ----------------------------------------------------------------------------
+// Intitulé
+// ----------------------------------------------------------------------------
 
-function scoreSector(
-  sectors: string[],
-  title: string,
-  description: string
-): { score: number; matched: string[] } {
-  if (!sectors.length) return { score: 50, matched: [] };
-  const titleNorm = normalize(title);
-  const descNorm = normalize(description);
-  const matched: string[] = [];
+/**
+ * Proximité de deux intitulés : F2 pondéré par la rareté des mots parmi les
+ * titres. Le rappel (les mots du poste visé retrouvés dans le titre de l'offre)
+ * compte quatre fois plus que la précision. La précision, elle, se mesure contre
+ * TOUT le vocabulaire du profil et non le seul poste visé : « Java » dans le titre
+ * pénalise un développeur .NET, « Angular » ne pénalise pas celui qui le pratique.
+ */
+function titleSimilarity(target: string[], offer: string[], vocabulary: Set<string>, corpus: Corpus): number {
+  if (!target.length || !offer.length) return 0;
+  const offerSet = new Set(offer);
+  const targetSet = new Set(target);
+  const credit = (token: string, present: Set<string>): number => {
+    if (present.has(token)) return 1;
+    const abbr = ABBREVIATIONS[token];
+    return abbr && abbr.forms.some((f) => present.has(f)) ? abbr.credit : 0;
+  };
+  let found = 0;
   let total = 0;
+  for (const t of targetSet) {
+    const w = titleIdf(corpus, t);
+    total += w;
+    found += w * credit(t, offerSet);
+  }
+  const recall = total ? found / total : 0;
 
-  for (const sector of sectors) {
-    const tokens = tokenize(sector);
-    if (!tokens.length) continue;
-    const inTitle = tokens.some((t) => containsTerm(titleNorm, t));
-    const inDesc = tokens.some((t) => containsTerm(descNorm, t));
-    if (inTitle) {
-      total += 1.0;
-      matched.push(sector);
-    } else if (inDesc) {
-      total += 0.6;
-      matched.push(sector);
+  let kept = 0;
+  let offered = 0;
+  for (const t of offerSet) {
+    const w = titleIdf(corpus, t);
+    offered += w;
+    let c = targetSet.has(t) || vocabulary.has(t) ? 1 : 0;
+    for (const [full, abbr] of Object.entries(ABBREVIATIONS)) {
+      if (!c && targetSet.has(full) && abbr.forms.includes(t)) c = abbr.credit;
+    }
+    kept += w * c;
+  }
+  const precision = offered ? kept / offered : 0;
+  if (recall === 0 || precision === 0) return 0;
+  return (5 * precision * recall) / (4 * precision + recall);
+}
+
+function scoreTitle(p: PreparedProfile, o: PreparedOffer, corpus: Corpus): { score: number; best: string | null } {
+  if (!p.targets.length) return { score: 50, best: null };
+  let score = 0;
+  let best: string | null = null;
+  for (const t of p.targets) {
+    const s = titleSimilarity(t.tokens, o.titleTokens, p.vocabulary, corpus) * t.weight;
+    if (s > score) {
+      score = s;
+      best = t.label;
     }
   }
-  const best = sectors.length === 0 ? 0 : (total / sectors.length) * 100;
-  const hasTitleMatch = matched.some((s) =>
-    tokenize(s).some((t) => containsTerm(titleNorm, t))
-  );
-  const score = Math.round(Math.min(100, hasTitleMatch ? Math.max(best, 70) : best));
-  return { score, matched };
+  return { score: Math.round(score * 100), best };
 }
 
+// ----------------------------------------------------------------------------
+// Compétences
+// ----------------------------------------------------------------------------
+
+/**
+ * Deux mesures complémentaires :
+ * - présence : les compétences du profil retrouvées dans l'annonce, mot à mot
+ *   et non plus expression exacte, une compétence rare comptant plus qu'une
+ *   compétence que toutes les annonces citent ;
+ * - couverture : la part des mots rares du bloc « profil recherché » que le
+ *   profil couvre — c'est ce que l'offre DEMANDE, et non ce que le profil liste.
+ */
 function scoreSkills(
-  profile: ProfileFull,
-  description: string
+  p: PreparedProfile,
+  o: PreparedOffer,
+  corpus: Corpus
 ): { score: number; matched: string[]; anchoredMatched: string[] } {
-  if (!profile.skills.length) return { score: 30, matched: [], anchoredMatched: [] };
-  const descNorm = normalize(description);
-
-  const anchoredSkills = profile.skills.filter((s) => s.evidence_experience_ids.length > 0);
-  const listedSkills = profile.skills.filter((s) => s.evidence_experience_ids.length === 0);
-
   const matched: string[] = [];
   const anchoredMatched: string[] = [];
-
-  let weightedHits = 0;
-  for (const s of anchoredSkills) {
-    if (containsTerm(descNorm, s.name)) {
-      weightedHits += 2;
+  let hit = 0;
+  let max = 0;
+  let strong = 0;
+  for (const s of p.skills) {
+    let credit = 0;
+    if (containsPhrase(o.bodyJoined, s.tokens)) credit = 1;
+    else if (s.tokens.length > 1) {
+      let found = 0;
+      let total = 0;
+      for (const t of s.tokens) {
+        const w = idf(corpus, t);
+        total += w;
+        if (o.bodyTokens.has(t)) found += w;
+      }
+      const frac = total ? found / total : 0;
+      if (frac >= 0.5) credit = 0.6 * frac;
+    }
+    const w = (s.anchored ? 1.5 : 1) * s.info;
+    hit += credit * w;
+    max += w;
+    if (credit >= 0.5) {
       matched.push(s.name);
-      anchoredMatched.push(s.name);
+      if (s.anchored) anchoredMatched.push(s.name);
+      strong += credit * (s.anchored ? 1.5 : 1);
     }
   }
-  for (const s of listedSkills) {
-    if (containsTerm(descNorm, s.name)) {
-      weightedHits += 1;
-      matched.push(s.name);
-    }
+  const presence = max ? 0.5 * (hit / max) + 0.5 * Math.min(1, strong / 3) : 0.3;
+
+  // Couverture des exigences : les 25 mots les plus rares du bloc « profil ».
+  const requirements = o.requirementTokens
+    .map((t) => ({ t, w: idf(corpus, t) }))
+    .filter((x) => informativeness(corpus, x.w) >= 0.5)
+    .sort((a, b) => b.w - a.w)
+    .slice(0, 25);
+  const reqTotal = requirements.reduce((s, x) => s + x.w, 0);
+  const reqFound = requirements.reduce((s, x) => s + (p.vocabulary.has(x.t) ? x.w : 0), 0);
+  const coverage = reqTotal ? Math.min(1, reqFound / reqTotal / 0.4) : 0;
+
+  return { score: Math.round(100 * (0.65 * presence + 0.35 * coverage)), matched, anchoredMatched };
+}
+
+// ----------------------------------------------------------------------------
+// Mots-clés de recherche (ex-« secteur »)
+// ----------------------------------------------------------------------------
+
+/**
+ * Les mots-clés servent de REQUÊTE aux sources : toute offre trouvée les
+ * contient déjà. Leur présence ne compte donc qu'à hauteur de leur rareté — un
+ * mot-clé présent partout n'apporte presque rien, et il n'y a plus de plancher.
+ */
+function scoreKeywords(p: PreparedProfile, o: PreparedOffer): { score: number; matched: string[] } {
+  if (!p.keywords.length) return { score: 50, matched: [] };
+  const values: number[] = [];
+  const matched: string[] = [];
+  for (const k of p.keywords) {
+    const presence = containsPhrase(o.titleJoined, k.tokens) ? 1 : containsPhrase(o.bodyJoined, k.tokens) ? 0.5 : 0;
+    values.push(presence * k.info);
+    if (presence) matched.push(k.tokens.join(" "));
   }
-
-  const maxWeight = anchoredSkills.length * 2 + listedSkills.length * 1;
-  if (maxWeight === 0) return { score: 30, matched, anchoredMatched };
-
-  const density = weightedHits / maxWeight;
-  const absoluteBoost = Math.min(1, matched.length / 6);
-
-  const score = Math.round(Math.min(100, density * 70 + absoluteBoost * 30));
-  return { score, matched, anchoredMatched };
+  const best = Math.max(...values);
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  return { score: Math.round(100 * (0.7 * best + 0.3 * mean)), matched };
 }
 
 function scoreCountry(targetCountries: string[], offreCountry: string | null): number {
@@ -250,7 +435,7 @@ function scoreContract(
 }
 
 // ----------------------------------------------------------------------------
-// Final scoring : weighted base + language/duration bonuses on top, capped 100
+// Note finale
 // ----------------------------------------------------------------------------
 
 export type ScoringInput = {
@@ -259,71 +444,92 @@ export type ScoringInput = {
   country: string | null;
   description_text: string;
   contract_type?: string | null;
+  /** Ville de l'offre : retirée du titre avant comparaison. */
+  location?: string | null;
 };
 
-export function scoreOffreLocal(
+function scorePrepared(
   profile: ProfileFull,
-  offre: ScoringInput
+  p: PreparedProfile,
+  offre: ScoringInput,
+  o: PreparedOffer,
+  corpus: Corpus
 ): ScoreResult {
-  const sector = scoreSector(profile.sectors, offre.title, offre.description_text);
-  const skills = scoreSkills(profile, offre.description_text);
+  const title = scoreTitle(p, o, corpus);
+  const skills = scoreSkills(p, o, corpus);
+  const keywords = scoreKeywords(p, o);
   const country = scoreCountry(profile.target_countries, offre.country);
+  const seniority = assessSeniority(p.years, offre.title, offre.description_text);
   const language = scoreLanguage(profile.languages, offre.title, offre.description_text);
   const contract = scoreContract(profile.preferred_contracts, offre);
   const duration = scoreDuration(contract.category, offre.description_text);
 
-  // Weighted base, same balance as before (sector 30 / skills 50 / country 20)
   const base =
-    sector.score * 0.3 + skills.score * 0.5 + country * 0.2;
+    (title.score * WEIGHTS.title +
+      skills.score * WEIGHTS.skills +
+      keywords.score * WEIGHTS.keywords +
+      country * WEIGHTS.country) *
+    seniority.factor;
 
-  // Bonuses on top, capped overall at 100. Tuned so a perfect-base offer
-  // (100) stays at 100, and a so-so 60-pts offer can climb to ~73 if it
-  // matches a 12-24 mois V.I.E in the user's strongest language.
-  const languageBonus = (language.score / 100) * 8;   // up to +8
-  const durationBonus = (duration.score / 100) * 5;   // up to +5
-  // Contrat : centré sur 50 → contrat recherché (preferred_contracts) +10, inconnu 0, identifié mais non recherché −6
+  const languageBonus = (language.score / 100) * 8; // jusqu'à +8
+  const durationBonus = (duration.score / 100) * 5; // jusqu'à +5, V.I.E seulement
+  // Contrat : centré sur 50 → contrat recherché +10, inconnu 0, identifié mais non recherché −6
   const contractDelta = ((contract.score - 50) / 50) * 10;
 
-  const finalScore = Math.round(
+  let finalScore = Math.round(
     Math.max(0, Math.min(100, base + languageBonus + durationBonus + contractDelta))
   );
+  if (seniority.excluded) finalScore = Math.min(finalScore, EXCLUDED_CAP);
 
-  // Build human-readable reason
   const parts: string[] = [];
-  if (sector.matched.length) parts.push(`secteur ${sector.matched.slice(0, 2).join("/")}`);
+  if (seniority.excluded) parts.push(`Hors critères, ${seniority.excluded}`);
+  if (title.best && title.score >= 50) parts.push(`intitulé proche de « ${title.best} »`);
   if (skills.anchoredMatched.length) {
-    parts.push(`skills ancrées : ${skills.anchoredMatched.slice(0, 3).join(", ")}`);
+    parts.push(`compétences ancrées : ${skills.anchoredMatched.slice(0, 3).join(", ")}`);
   } else if (skills.matched.length) {
-    parts.push(`skills : ${skills.matched.slice(0, 3).join(", ")}`);
+    parts.push(`compétences : ${skills.matched.slice(0, 3).join(", ")}`);
   }
-  if (country === 100) parts.push("pays OK");
-  else if (country === 0) parts.push("hors pays cibles");
+  if (!seniority.excluded && seniority.note) parts.push(seniority.note);
+  if (country === 0) parts.push("hors pays cibles");
   if (language.matched) parts.push(`langue ${language.offerLang.toUpperCase()} OK`);
-  if (duration.months && duration.score >= 60)
-    parts.push(`durée ${duration.months} mois`);
-  if (contract.score === 100)
-    parts.push(`${contract.category.toUpperCase()} recherché`);
-  else if (contract.score === 20)
-    parts.push(`${contract.category} (non ciblé)`);
+  if (duration.months && duration.score >= 60) parts.push(`durée ${duration.months} mois`);
+  if (contract.score === 100) parts.push(`${contract.category.toUpperCase()} recherché`);
+  else if (contract.score === 20) parts.push(`${contract.category} (non ciblé)`);
   const reason = parts.length ? parts.join(" · ") : "Faible recouvrement avec votre profil";
 
   return {
     score: finalScore,
     breakdown: {
-      sector: sector.score,
+      sector: keywords.score,
       skills: skills.score,
       country,
       language: language.score,
       duration: duration.score,
       contract: contract.score,
+      title: title.score,
+      seniority: seniority.score,
+      ...(seniority.excluded ? { excluded: seniority.excluded } : {}),
     },
     reason,
   };
 }
 
-export function scoreOffresLocal(
-  profile: ProfileFull,
-  offres: ScoringInput[]
-): ScoreResult[] {
-  return offres.map((o) => scoreOffreLocal(profile, o));
+/**
+ * Note d'une seule offre. Sans `corpus`, la rareté des mots ne peut pas être
+ * mesurée et tous les mots pèsent pareil : préférer `scoreOffresLocal`, ou
+ * passer le corpus de toutes les offres de la base.
+ */
+export function scoreOffreLocal(profile: ProfileFull, offre: ScoringInput, corpus?: Corpus): ScoreResult {
+  const c = corpus ?? buildCorpus([offre]);
+  return scorePrepared(profile, prepareProfile(profile, c), offre, prepareOffer(offre), c);
+}
+
+/**
+ * Note d'un lot d'offres. La rareté des mots se mesure sur `corpus` quand il
+ * est fourni (toutes les offres de la base), sinon sur le lot lui-même.
+ */
+export function scoreOffresLocal(profile: ProfileFull, offres: ScoringInput[], corpus?: Corpus): ScoreResult[] {
+  const c = corpus ?? buildCorpus(offres);
+  const p = prepareProfile(profile, c);
+  return offres.map((o) => scorePrepared(profile, p, o, prepareOffer(o), c));
 }

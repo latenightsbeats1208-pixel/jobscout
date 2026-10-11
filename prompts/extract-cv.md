@@ -38,4 +38,6 @@ Tu es un expert en extraction de données structurées à partir de CV (curricul
 
 8. **Langues** : niveau au format CECRL si possible (A1-C2), sinon texte libre ("courant", "natif", "B2").
 
-9. **Sortie** : appelle UNIQUEMENT le tool `extract_cv` avec les données structurées. Ne réponds pas en texte libre.
+9. **Postes visés (`target_titles`)** : 1 à 3 intitulés, formulés comme des titres d'offres d'emploi (« Développeur .NET », « Business Analyst »). Prends d'abord l'intitulé que le CV affiche en tête, sous le nom, puis celui du poste actuel ou le plus récent. Jamais un poste que le CV ne mentionne pas, jamais un stage ni une alternance passés. Tableau vide si le CV n'en affiche aucun.
+
+10. **Sortie** : appelle UNIQUEMENT le tool `extract_cv` avec les données structurées. Ne réponds pas en texte libre.

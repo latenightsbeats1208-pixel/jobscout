@@ -5,8 +5,9 @@ import type { ProfileFull, Profile, Experience, Education, Skill, Language } fro
 export function getProfile(): ProfileFull | null {
   const db = getDb();
   const profile = db.prepare("SELECT * FROM profile ORDER BY id ASC LIMIT 1").get() as
-    | (Omit<Profile, "sectors" | "target_countries" | "sources_enabled" | "preferred_contracts"> & {
+    | (Omit<Profile, "sectors" | "target_titles" | "target_countries" | "sources_enabled" | "preferred_contracts"> & {
         sectors: string;
+        target_titles: string;
         target_countries: string;
         sources_enabled: string;
         preferred_contracts: string;
@@ -41,6 +42,7 @@ export function getProfile(): ProfileFull | null {
   return {
     ...profile,
     sectors: parseJson(profile.sectors, []),
+    target_titles: parseJson(profile.target_titles, []),
     target_countries: parseJson(profile.target_countries, []),
     sources_enabled: parseJson(profile.sources_enabled, []),
     preferred_contracts: parseJson(profile.preferred_contracts, ["cdi", "cdd"]),
@@ -64,8 +66,8 @@ export function saveProfile(input: Omit<ProfileFull, "id" | "created_at" | "upda
     db.prepare("DELETE FROM profile").run();
     const result = db
       .prepare(
-        `INSERT INTO profile (full_name, email, phone, location, linkedin_url, portfolio_url, summary, raw_cv_text, sectors, target_countries, sources_enabled, preferred_contracts, extraction_confidence)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO profile (full_name, email, phone, location, linkedin_url, portfolio_url, summary, raw_cv_text, sectors, target_titles, target_countries, sources_enabled, preferred_contracts, extraction_confidence)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         input.full_name ?? null,
@@ -77,6 +79,7 @@ export function saveProfile(input: Omit<ProfileFull, "id" | "created_at" | "upda
         input.summary ?? null,
         input.raw_cv_text ?? null,
         asJson(input.sectors ?? []),
+        asJson(input.target_titles ?? []),
         asJson(input.target_countries ?? []),
         asJson(input.sources_enabled ?? []),
         asJson(input.preferred_contracts ?? ["cdi", "cdd"]),

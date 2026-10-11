@@ -77,9 +77,17 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
             <section aria-labelledby="score-title" className="glass-panel p-5">
               <h2 id="score-title" className="text-h3">Pourquoi ce score ?</h2>
               <p className="mt-1 text-small text-textSecondary">Comparaison de l'offre avec votre profil.</p>
+              {offre.score_breakdown.excluded && (
+                <p className="mt-4 rounded-lg border border-border bg-surface px-3 py-2 text-small">
+                  <span className="font-semibold">Hors critères</span> — {offre.score_breakdown.excluded}.
+                </p>
+              )}
               <div className="mt-5 space-y-4">
-                <ScoreBar label="Secteur" value={offre.score_breakdown.sector} />
+                {offre.score_breakdown.title != null && <ScoreBar label="Intitulé" value={offre.score_breakdown.title} />}
                 <ScoreBar label="Compétences" value={offre.score_breakdown.skills} />
+                {offre.score_breakdown.seniority != null && <ScoreBar label="Expérience" value={offre.score_breakdown.seniority} />}
+                {/* Les notes calculées avant l'intitulé appelaient ce critère « Secteur ». */}
+                <ScoreBar label={offre.score_breakdown.title != null ? "Mots-clés" : "Secteur"} value={offre.score_breakdown.sector} />
                 <ScoreBar label="Pays" value={offre.score_breakdown.country} />
                 {offre.score_breakdown.language != null && <ScoreBar label="Langue" value={offre.score_breakdown.language} />}
                 {offre.score_breakdown.contract != null && <ScoreBar label="Contrat" value={offre.score_breakdown.contract} />}

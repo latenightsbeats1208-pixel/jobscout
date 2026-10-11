@@ -30,6 +30,12 @@ export type OffreRow = {
     language?: number;
     duration?: number;
     contract?: number;
+    /** Proximité de l'intitulé avec les postes visés (absent des notes antérieures). */
+    title?: number;
+    /** Adéquation de l'expérience demandée (absent des notes antérieures). */
+    seniority?: number;
+    /** Motif d'exclusion : l'offre est hors critères. */
+    excluded?: string;
     reason?: string;
   } | null;
   is_vie: number;

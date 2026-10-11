@@ -52,6 +52,8 @@ export const ProfileSchema = z.object({
   summary: z.string().nullable().optional(),
   raw_cv_text: z.string().nullable().optional(),
   sectors: z.array(z.string()).default([]),
+  /** Postes visés (« Business Analyst », « Data Engineer »…) : la note compare l'intitulé de chaque offre à cette liste. */
+  target_titles: z.array(z.string()).default([]),
   target_countries: z.array(z.string()).default([]),
   sources_enabled: z.array(z.string()).default([]),
   preferred_contracts: z
@@ -82,6 +84,8 @@ export const ExtractedCVSchema = z.object({
     portfolio_url: z.string().nullable(),
   }),
   summary: z.string().nullable(),
+  /** Intitulés de poste que le CV met en avant (titre du CV, poste actuel), formulés comme des intitulés d'offres. */
+  target_titles: z.array(z.string()).default([]),
   experiences: z.array(
     z.object({
       title: z.string(),

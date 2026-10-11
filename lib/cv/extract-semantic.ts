@@ -31,6 +31,7 @@ const EXTRACT_TOOL = {
         required: ["full_name", "email", "phone", "location", "linkedin_url", "portfolio_url"],
       },
       summary: { type: ["string", "null"] },
+      target_titles: { type: "array", items: { type: "string" } },
       experiences: {
         type: "array",
         items: {
@@ -127,7 +128,7 @@ const EXTRACT_TOOL = {
         },
       },
     },
-    required: ["identity", "summary", "experiences", "educations", "skills", "languages", "certifications"],
+    required: ["identity", "summary", "target_titles", "experiences", "educations", "skills", "languages", "certifications"],
   },
 } as const;
 

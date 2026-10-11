@@ -3,6 +3,7 @@ import { getEnabledScrapers } from "@/lib/scrapers/registry";
 import { DEFAULT_SOURCE_IDS, sourceLabel, sourceUnavailable } from "@/lib/sources-meta";
 import { upsertOffreFromSource, setOffreScore } from "@/lib/db/offres";
 import { scoreOffresLocal } from "@/lib/scoring/local";
+import { loadCorpus, rescoreAllOffres } from "@/lib/scoring/rescore";
 import { getProfile } from "@/lib/db/queries";
 import { getDb } from "@/lib/db";
 import type { ProgressEvent } from "@/lib/scrapers/base";
@@ -115,6 +116,14 @@ export async function* runScan(
     flush();
   }
 
+  // Les premiers lots ont été notés avec une rareté mesurée sur moins d'offres :
+  // un recalcul final remet toutes les offres sur la même échelle.
+  try {
+    rescoreAllOffres(profile);
+  } catch (e) {
+    yield { kind: "error", source: "scoring", message: e instanceof Error ? e.message : String(e) };
+  }
+
   db.prepare("UPDATE scan_runs SET status = 'done', finished_at = datetime('now') WHERE id = ?").run(runId);
   yield { kind: "global-done", total_inserted: totalInserted };
 }
@@ -128,12 +137,14 @@ async function scoreBatch(
     title: b.offre.title,
     company: b.offre.company,
     country: b.offre.country,
+    location: b.offre.location ?? null,
     description_text: b.offre.description_text,
     contract_type: b.offre.contract_type ?? null,
   }));
   try {
-    // Local deterministic scoring — no API call, instantaneous, no token cost.
-    const results = scoreOffresLocal(profile, offresForScoring);
+    // Note locale, sans appel réseau ; la rareté des mots se mesure sur toutes
+    // les offres déjà en base, lot courant compris (il vient d'être enregistré).
+    const results = scoreOffresLocal(profile, offresForScoring, loadCorpus());
     results.forEach((r, i) => {
       const id = buffer[i].id;
       if (id) {

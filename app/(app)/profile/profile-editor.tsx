@@ -297,6 +297,16 @@ function SearchCard({
     <Card id="recherche" className="scroll-mt-28">
       <SectionHead icon={<Globe className="h-4 w-4" />} title="Recherche" />
 
+      <ChipListField
+        label="Postes visés"
+        items={profile.target_titles ?? []}
+        onChange={(target_titles) => update({ target_titles })}
+        placeholder="Ex. Business Analyst, Développeur .NET…"
+      />
+      <p className="text-small text-textSecondary mt-2 mb-4">
+        Chaque offre est notée d'abord sur la proximité de son titre avec ces intitulés.
+      </p>
+
       <p className="text-caption uppercase text-textSecondary mb-2">Secteurs</p>
       <div className="flex flex-wrap gap-1.5 mb-2">
         {profile.sectors.map((s) => (
@@ -1037,10 +1047,12 @@ function ChipListField({
   label,
   items,
   onChange,
+  placeholder = "Ajouter une compétence ancrée",
 }: {
   label: string;
   items: string[];
   onChange: (items: string[]) => void;
+  placeholder?: string;
 }) {
   const [val, setVal] = useState("");
   const add = () => {
@@ -1072,7 +1084,7 @@ function ChipListField({
         <Input
           value={val}
           onChange={(e) => setVal(e.target.value)}
-          placeholder="Ajouter une compétence ancrée"
+          placeholder={placeholder}
           onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())}
         />
         <Button variant="secondary" size="sm" onClick={add}>

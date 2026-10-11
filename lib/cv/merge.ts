@@ -266,6 +266,8 @@ export function mergeProfile(current: ProfileFull, incoming: ProfileFull): Profi
   const merged = applyMerge(current, plan);
   return {
     ...merged,
+    // Postes visés : ceux déjà choisis l'emportent, ceux du nouveau CV ne servent que s'il n'y en a aucun.
+    target_titles: current.target_titles?.length ? current.target_titles : incoming.target_titles ?? [],
     raw_cv_text: [current.raw_cv_text, incoming.raw_cv_text].filter(Boolean).join("\n\n---\n\n"),
   };
 }

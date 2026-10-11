@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS profile (
   summary TEXT,
   raw_cv_text TEXT,
   sectors TEXT NOT NULL DEFAULT '[]',
+  target_titles TEXT NOT NULL DEFAULT '[]',
   target_countries TEXT NOT NULL DEFAULT '[]',
   sources_enabled TEXT NOT NULL DEFAULT '[]',
   preferred_contracts TEXT NOT NULL DEFAULT '["cdi","cdd"]',
