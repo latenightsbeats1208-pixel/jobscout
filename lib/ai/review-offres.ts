@@ -120,6 +120,8 @@ export type ReviewInput = {
 async function reviewBatch(profile: ProfileFull, offres: ReviewInput[]): Promise<(AiReview | null)[]> {
   const res = await callStructured({
     role: "reviewer",
+    // Deux relectures de la même annonce doivent dire la même chose.
+    temperature: 0,
     // Plancher fixe en plus de la part par offre : les modèles qui réfléchissent
     // avant de répondre (Gemini Flash) prennent ce temps sur le même budget, et
     // un petit lot de 1 à 3 offres revenait tronqué, donc vide.

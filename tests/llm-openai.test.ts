@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { callStructured, listModels, LlmHttpError, LlmTransportError, type StructuredRequest } from "@/lib/ai/llm";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { acceptsTemperature, callStructured, listModels, LlmHttpError, LlmTransportError, resetLlmMemory, type StructuredRequest } from "@/lib/ai/llm";
 import { PROVIDERS } from "@/lib/ai/providers";
 import { AiContentError, translateAiError } from "@/lib/ai/errors";
 import { cfgFor } from "./fixtures";
@@ -431,5 +431,41 @@ describe("messages réseau selon le fournisseur (3.4.14)", () => {
     expect(refused.message).not.toContain("connexion internet");
     const unknown = translateAiError(await callStructured(REQ, cfg, { fetch: fakeFetch([netErr("ENOTFOUND")]).fn }).catch((e) => e))!;
     expect(unknown.message).toContain("Adresse introuvable : https://llm.exemple.com/v1");
+  });
+});
+
+describe("température", () => {
+  beforeEach(() => resetLlmMemory());
+
+  it("envoyée quand elle est demandée, absente sinon", async () => {
+    const { fn, calls } = fakeFetch([{ body: toolAnswer({ title: "T", sections: { items: [] } }) }]);
+    await callStructured({ ...REQ, temperature: 0 }, cfgFor("mistral"), { fetch: fn });
+    await callStructured(REQ, cfgFor("mistral"), { fetch: fn });
+    expect(calls[0].body!.temperature).toBe(0);
+    expect(calls[1].body).not.toHaveProperty("temperature");
+  });
+
+  it("jamais envoyée aux modèles de raisonnement d'OpenAI, en direct ou via OpenRouter", async () => {
+    const { fn, calls } = fakeFetch([{ body: toolAnswer({ title: "T", sections: { items: [] } }) }]);
+    const models = { writer: "gpt-5-mini", reviewer: "o4-mini" };
+    await callStructured({ ...REQ, temperature: 0 }, cfgFor("openai", { models }), { fetch: fn });
+    await callStructured({ ...REQ, role: "reviewer", temperature: 0 }, cfgFor("openai", { models }), { fetch: fn });
+    await callStructured({ ...REQ, temperature: 0 }, cfgFor("openrouter", { models: { writer: "openai/gpt-5", reviewer: "openai/gpt-5" } }), { fetch: fn });
+    for (const c of calls) expect(c.body).not.toHaveProperty("temperature");
+    expect(acceptsTemperature("openai", "gpt-4.1")).toBe(true);
+  });
+
+  it("refus nommé par le serveur : nouvel essai sans, mémorisé pour les appels suivants", async () => {
+    const refusal = { status: 400, body: { error: { message: "Unsupported value: 'temperature' does not support 0 with this model." } } };
+    const ok = { body: toolAnswer({ title: "T", sections: { items: [] } }) };
+    const { fn, calls } = fakeFetch([refusal, ok, ok]);
+    const cfg = cfgFor("custom", { models: { writer: "modele-local", reviewer: "modele-local" } });
+    const r = await callStructured({ ...REQ, temperature: 0 }, cfg, { fetch: fn, ...noSleep });
+    expect(r.input).toEqual({ title: "T", sections: { items: [] } });
+    expect(calls[0].body!.temperature).toBe(0);
+    expect(calls[1].body).not.toHaveProperty("temperature");
+    await callStructured({ ...REQ, temperature: 0 }, cfg, { fetch: fn, ...noSleep });
+    expect(calls).toHaveLength(3); // le refus n'est payé qu'une fois
+    expect(calls[2].body).not.toHaveProperty("temperature");
   });
 });

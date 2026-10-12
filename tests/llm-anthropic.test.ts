@@ -96,6 +96,25 @@ describe("fournisseur Anthropic", () => {
     expect(calls[2].tool_choice).toEqual({ type: "auto" });
   });
 
+  it("température : envoyée si demandée ; refusée → nouvel essai sans, mémorisé", async () => {
+    const ok = { content: [{ type: "tool_use", name: "build_cv", input: { sections: { a: [] } } }], stop_reason: "tool_use" };
+    const { client, calls } = fakeAnthropic(http400("temperature: unsupported for this model"), ok, ok);
+    const req = { role: "reviewer" as const, system: "S", user: "U", tool: TOOL, maxTokens: 1000, temperature: 0 };
+    const r = await callStructured(req, cfgFor("anthropic"), { anthropic: client });
+    expect(r.input).toEqual({ sections: { a: [] } });
+    expect(calls[0].temperature).toBe(0);
+    expect(calls[1]).not.toHaveProperty("temperature");
+    await callStructured(req, cfgFor("anthropic"), { anthropic: client });
+    expect(calls).toHaveLength(3);
+    expect(calls[2]).not.toHaveProperty("temperature");
+  });
+
+  it("sans température demandée, aucune n'est envoyée", async () => {
+    const { client, calls } = fakeAnthropic({ content: [{ type: "tool_use", name: "build_cv", input: { sections: { a: [] } } }], stop_reason: "tool_use" });
+    await callStructured({ role: "writer", system: "S", user: "U", tool: TOOL, maxTokens: 1000 }, cfgFor("anthropic"), { anthropic: client });
+    expect(calls[0]).not.toHaveProperty("temperature");
+  });
+
   it("autre erreur 400 (document trop long) → pas de nouvel essai", async () => {
     const { client, calls } = fakeAnthropic(http400("prompt is too long: 250000 tokens > 200000 maximum"));
     const err = await callStructured({ role: "writer", system: "S", user: "U", tool: TOOL, maxTokens: 10 }, cfgFor("anthropic"), { anthropic: client }).catch((e) => e);

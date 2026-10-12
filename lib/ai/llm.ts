@@ -38,6 +38,11 @@ export type StructuredRequest = {
   user: string;
   tool: StructuredTool;
   maxTokens: number;
+  /**
+   * Température souhaitée (0 = réponses les plus stables). Envoyée seulement si
+   * le modèle l'accepte : voir acceptsTemperature et le repli sur refus.
+   */
+  temperature?: number;
 };
 
 export type StructuredResult = {
@@ -142,9 +147,35 @@ export async function callStructured(
  */
 const anthropicNoForcedTool = new Set<string>();
 
+/**
+ * Modèles qui ont refusé la température (« fournisseur/modèle ») : appris au
+ * premier refus, pour ne payer l'aller-retour refusé qu'une fois par modèle.
+ */
+const noTemperature = new Set<string>();
+
+/**
+ * Modèles connus pour refuser toute température autre que celle par défaut :
+ * les modèles de raisonnement d'OpenAI (famille o, GPT-5), en direct ou via
+ * OpenRouter. Les autres l'essaient ; un refus nommé est rattrapé et mémorisé.
+ */
+const KNOWN_NO_TEMPERATURE = /(^|\/)(o\d|gpt-5)/i;
+
+export function acceptsTemperature(provider: ProviderId, model: string): boolean {
+  if (noTemperature.has(`${provider}/${model}`)) return false;
+  if ((provider === "openai" || provider === "openrouter") && KNOWN_NO_TEMPERATURE.test(model)) return false;
+  return true;
+}
+
+function isTemperatureRefusal(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  const status = (e as { status?: unknown }).status;
+  return status === 400 && /temperature/i.test(e.message);
+}
+
 /** Pour les tests : oublie les stratégies mémorisées. */
 export function resetLlmMemory(): void {
   anthropicNoForcedTool.clear();
+  noTemperature.clear();
 }
 
 function isForcedToolRefusal(e: unknown): boolean {
@@ -161,10 +192,11 @@ async function callAnthropic(
 ): Promise<StructuredResult> {
   const client = deps.anthropic ?? getClaude(cfg);
   const blocks = blocksOf(req.system);
-  const send = (forced: boolean) =>
+  const send = (forced: boolean, withTemperature: boolean) =>
     client.messages.create({
       model,
       max_tokens: req.maxTokens,
+      ...(withTemperature ? { temperature: req.temperature } : {}),
       system: [
         ...blocks.map((b) => ({
           type: "text" as const,
@@ -183,15 +215,26 @@ async function callAnthropic(
     });
 
   let forced = !anthropicNoForcedTool.has(model);
-  let message: Awaited<ReturnType<typeof send>>;
-  try {
-    message = await send(forced);
-  } catch (e) {
-    if (!forced || !isForcedToolRefusal(e)) throw e;
-    console.warn(`[llm] anthropic/${model} : outil forcé refusé — appel en mode « auto »`);
-    anthropicNoForcedTool.add(model);
-    forced = false;
-    message = await send(false);
+  let withTemperature = req.temperature !== undefined && acceptsTemperature(cfg.provider, model);
+  let message: Awaited<ReturnType<typeof send>> | undefined;
+  // Deux refus possibles, chacun rattrapé une fois et mémorisé : l'outil forcé
+  // (modèles récents) et la température.
+  while (!message) {
+    try {
+      message = await send(forced, withTemperature);
+    } catch (e) {
+      if (withTemperature && isTemperatureRefusal(e)) {
+        console.warn(`[llm] anthropic/${model} : température refusée — nouvel essai sans`);
+        noTemperature.add(`${cfg.provider}/${model}`);
+        withTemperature = false;
+      } else if (forced && isForcedToolRefusal(e)) {
+        console.warn(`[llm] anthropic/${model} : outil forcé refusé — appel en mode « auto »`);
+        anthropicNoForcedTool.add(model);
+        forced = false;
+      } else {
+        throw e;
+      }
+    }
   }
   const t = message.content.find((b) => b.type === "tool_use");
   let raw: unknown = t && t.type === "tool_use" ? t.input : null;
@@ -204,7 +247,7 @@ async function callAnthropic(
   const truncated = message.stop_reason === "max_tokens";
   const u = (message as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
   console.log(
-    `[llm] ${cfg.mode === "pack" ? "pack" : "anthropic"}/${model}${forced ? "" : " (auto)"} — ${u?.input_tokens ?? "?"} jetons en entrée, ${u?.output_tokens ?? "?"} en sortie${truncated ? ", TRONQUÉ" : ""}`
+    `[llm] ${cfg.mode === "pack" ? "pack" : "anthropic"}/${model}${forced ? "" : " (auto)"}${withTemperature ? `, température ${req.temperature}` : ""} — ${u?.input_tokens ?? "?"} jetons en entrée, ${u?.output_tokens ?? "?"} en sortie${truncated ? ", TRONQUÉ" : ""}`
   );
   return { input, truncated, provider: cfg.provider, model };
 }
@@ -361,7 +404,7 @@ async function callOpenAICompatible(
     if (input) input = coerceToSchema(input, req.tool.input_schema) as Record<string, unknown>;
     const u = data.usage;
     console.log(
-      `[llm] ${cfg.provider}/${model} (${STEP_LABEL[step]}) — ${u?.prompt_tokens ?? "?"} jetons en entrée, ${u?.completion_tokens ?? "?"} en sortie${truncated ? ", TRONQUÉ" : ""}`
+      `[llm] ${cfg.provider}/${model} (${STEP_LABEL[step]}${"temperature" in extra ? `, température ${extra.temperature}` : ""}) — ${u?.prompt_tokens ?? "?"} jetons en entrée, ${u?.completion_tokens ?? "?"} en sortie${truncated ? ", TRONQUÉ" : ""}`
     );
     if (input || truncated) return { input, truncated, provider: cfg.provider, model };
     return null;
@@ -370,6 +413,8 @@ async function callOpenAICompatible(
   // Paramètres propres au fournisseur (ex. raisonnement coupé) : retirés si le
   // serveur les refuse nommément, puis on rejoue le même cran.
   const extra: Record<string, unknown> = { ...(preset.extraBody ?? {}) };
+  // Retirable comme les autres : un refus qui la nomme la retire et rejoue le cran.
+  if (req.temperature !== undefined && acceptsTemperature(cfg.provider, model)) extra.temperature = req.temperature;
   const steps = LADDER[preset.structured];
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
@@ -382,6 +427,7 @@ async function callOpenAICompatible(
       if (refused.length > 0) {
         console.warn(`[llm] ${cfg.provider}/${model} : paramètre refusé (${refused.join(", ")}) — nouvel essai sans`);
         for (const k of refused) delete extra[k];
+        if (refused.includes("temperature")) noTemperature.add(`${cfg.provider}/${model}`);
         i--;
         continue;
       }
