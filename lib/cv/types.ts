@@ -55,6 +55,8 @@ export const ProfileSchema = z.object({
   /** Postes visés (« Business Analyst », « Data Engineer »…) : la note compare l'intitulé de chaque offre à cette liste. */
   target_titles: z.array(z.string()).default([]),
   target_countries: z.array(z.string()).default([]),
+  /** Zone de recherche en France : « » (tout le pays), « R:84 » (région) ou « D:69 » (département). Voir lib/geo/fr.ts. */
+  search_area: z.string().default(""),
   sources_enabled: z.array(z.string()).default([]),
   preferred_contracts: z
     .array(z.enum(["cdi", "cdd", "vie", "stage", "alternance"]))

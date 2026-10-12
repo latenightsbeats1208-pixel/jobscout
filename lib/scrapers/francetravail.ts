@@ -1,3 +1,5 @@
+import type { SearchArea } from "@/lib/geo/fr";
+import { quotaPerQuery } from "@/lib/scan/search-plan";
 import "server-only";
 import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./base";
 import { htmlToText } from "./base";
@@ -114,13 +116,14 @@ function apiJobToScraped(job: FtApiJob): ScrapedOffre | null {
   };
 }
 
-async function fetchApi(keywords: string, start: number, size: number): Promise<FtApiJob[]> {
+async function fetchApi(keywords: string, start: number, size: number, area?: SearchArea | null): Promise<FtApiJob[]> {
   const token = await getToken();
   if (!token) return [];
   const params = new URLSearchParams({
     motsCles: keywords,
     range: `${start}-${start + size - 1}`,
   });
+  if (area) params.set(area.kind === "region" ? "region" : "departement", area.code);
   const res = await fetch(`${API_BASE}/offres/search?${params}`, {
     headers: { accept: "application/json", authorization: `Bearer ${token}` },
   });
@@ -176,12 +179,14 @@ function parseHtmlSearch(html: string): HtmlCard[] {
   return out;
 }
 
-async function fetchHtmlPage(keywords: string, page: number): Promise<HtmlCard[]> {
+async function fetchHtmlPage(keywords: string, page: number, area?: SearchArea | null): Promise<HtmlCard[]> {
   const params = new URLSearchParams({
     motsCles: keywords,
     offresPartenaires: "true",
     page: String(page),
   });
+  // « 69D » : un département, « 84R » : une région (vérifié sur le site, octobre 2026).
+  if (area) params.set("lieux", `${area.code}${area.kind === "region" ? "R" : "D"}`);
   const res = await fetch(`${SEARCH_PAGE}?${params}`, { headers: BROWSER_HEADERS });
   if (!res.ok) throw new Error(`France Travail HTTP ${res.status}`);
   return parseHtmlSearch(await res.text());
@@ -241,24 +246,28 @@ export const francetravailScraper: Scraper = {
     }
 
     const max = criteria.maxOffres ?? 50;
-    const queries = criteria.sectors.length ? criteria.sectors : [""];
+    const queries = criteria.queries.length ? criteria.queries : [""];
+    const quota = quotaPerQuery(max, queries.length);
 
     // Stratégie 1 : API officielle (descriptions complètes, aucun fetch détail nécessaire)
     const apiOffres = new Map<string, ScrapedOffre>();
     for (const q of queries) {
       let start = 0;
-      while (apiOffres.size < max && start < 150) {
-        const jobs = await fetchApi(q, start, 50);
+      let taken = 0;
+      while (taken < quota && start < 150) {
+        const jobs = await fetchApi(q, start, 50, criteria.area);
         if (!jobs.length) break;
         for (const j of jobs) {
           const o = apiJobToScraped(j);
-          if (o && !apiOffres.has(o.source_id)) apiOffres.set(o.source_id, o);
+          if (o && !apiOffres.has(o.source_id) && taken < quota) {
+            apiOffres.set(o.source_id, o);
+            taken++;
+          }
         }
         if (jobs.length < 50) break;
         start += 50;
         await sleep(400);
       }
-      if (apiOffres.size >= max) break;
     }
 
     if (apiOffres.size > 0) {
@@ -277,18 +286,23 @@ export const francetravailScraper: Scraper = {
     // Stratégie 2 : HTML fallback
     const seen = new Map<string, HtmlCard>();
     for (const q of queries) {
-      for (let page = 1; page <= 3 && seen.size < max; page++) {
+      let taken = 0;
+      for (let page = 1; page <= 3 && taken < quota; page++) {
         try {
-          const cards = await fetchHtmlPage(q, page);
+          const cards = await fetchHtmlPage(q, page, criteria.area);
           if (!cards.length) break;
-          for (const c of cards) if (!seen.has(c.id)) seen.set(c.id, c);
+          for (const c of cards) {
+            if (!seen.has(c.id) && taken < quota) {
+              seen.set(c.id, c);
+              taken++;
+            }
+          }
           if (cards.length < 10) break;
           await sleep(1200);
         } catch {
           break;
         }
       }
-      if (seen.size >= max) break;
     }
 
     const cards = Array.from(seen.values()).slice(0, max);

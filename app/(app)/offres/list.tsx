@@ -284,7 +284,8 @@ function OfferRowContent({ offer }: { offer: OffreSummary }) {
           <Badge>{sourceLabels[offer.source] ?? offer.source}</Badge>
           {offer.contract_category !== "autre" && <Badge variant={offer.contract_category === "vie" ? "info" : "default"}>{CONTRACT_LABELS[offer.contract_category]}</Badge>}
           {(offer.has_cv || offer.has_lm) && <Badge variant="success">Dossier prêt</Badge>}
-          {offer.description_status === "failed" && <Badge variant="warning">Annonce partielle</Badge>}
+          {offer.description_status === "failed" && <Badge variant="warning">{isWrongDescription(offer.quality_issues) ? "Description erronée" : "Annonce partielle"}</Badge>}
+          {offer.description_status === "partial" && <Badge>Extrait seulement</Badge>}
           {offer.feedback?.verdict === "up" && <Badge variant="success">👍 Pour moi</Badge>}
           {offer.feedback?.verdict === "down" && <Badge>👎 Pas pour moi</Badge>}
         </span>
@@ -333,7 +334,7 @@ function OfferPreview({ offer }: { offer: OffreSummary }) {
       </div>
       <div className="border-t border-border py-5">
         <p className="text-small font-semibold">En bref</p>
-        <p className="mt-2 line-clamp-5 text-small leading-relaxed text-textSecondary">{offer.description_status === "failed" || !excerpt ? "La description n'est pas disponible ici. Consultez l'annonce d'origine pour en savoir plus." : excerpt}</p>
+        <p className="mt-2 line-clamp-5 text-small leading-relaxed text-textSecondary">{isWrongDescription(offer.quality_issues) ? "La description récupérée ne parle pas de ce poste : consultez l'annonce d'origine." : offer.description_status === "failed" || !excerpt ? "La description n'est pas disponible ici. Consultez l'annonce d'origine pour en savoir plus." : excerpt}</p>
       </div>
       <div className="space-y-2 border-t border-border pt-5">
         <Link href={`/offres/${offer.id}`} className="button-primary flex min-h-11 items-center justify-center gap-2 rounded-full px-4 text-center text-small font-medium">Voir l’offre et préparer le dossier <ArrowRight className="h-4 w-4 shrink-0" /></Link>
@@ -341,4 +342,9 @@ function OfferPreview({ offer }: { offer: OffreSummary }) {
       </div>
     </aside>
   );
+}
+
+/** Le contrôle de qualité a jugé que la description décrit autre chose que ce poste. */
+function isWrongDescription(issues: string[] | null | undefined): boolean {
+  return !!issues?.some((i) => i === "description_sans_rapport" || i === "page_de_resultats");
 }

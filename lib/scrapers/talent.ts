@@ -1,3 +1,5 @@
+import type { SearchArea } from "@/lib/geo/fr";
+import { quotaPerQuery } from "@/lib/scan/search-plan";
 import "server-only";
 import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./base";
 import { htmlToText } from "./base";
@@ -119,8 +121,9 @@ function parseSearchPage(html: string, domain: Domain): Card[] {
   return out;
 }
 
-async function fetchSearchPage(domain: Domain, keywords: string, page: number): Promise<Card[]> {
-  const params = new URLSearchParams({ k: keywords, l: "" });
+async function fetchSearchPage(domain: Domain, keywords: string, page: number, area?: SearchArea | null): Promise<Card[]> {
+  // La zone est française : elle ne s'applique qu'à fr.talent.com (vérifié : « Rhône », octobre 2026).
+  const params = new URLSearchParams({ k: keywords, l: area && domain.country === "France" ? area.name : "" });
   if (page > 1) params.set("p", String(page));
   const res = await fetch(`https://${domain.host}/jobs?${params}`, { headers: BROWSER_HEADERS });
   if (!res.ok) throw new Error(`Talent.com ${domain.host} HTTP ${res.status}`);
@@ -196,20 +199,21 @@ export const talentScraper: Scraper = {
     // Budget réparti : ~20 offres par pays, borné par maxOffres global.
     const max = criteria.maxOffres ?? Math.min(150, activeDomains.length * 20);
     const perDomain = Math.max(10, Math.floor(max / activeDomains.length));
-    const queries = criteria.sectors.length ? criteria.sectors : [""];
+    const queries = criteria.queries.length ? criteria.queries : [""];
+    const quota = quotaPerQuery(perDomain, queries.length);
     const seen = new Map<string, Card>();
 
     for (const domain of activeDomains) {
-      let domainCount = 0;
       for (const q of queries) {
-        for (let page = 1; page <= 2 && domainCount < perDomain; page++) {
+        let taken = 0;
+        for (let page = 1; page <= 2 && taken < quota; page++) {
           try {
-            const cards = await fetchSearchPage(domain, q, page);
+            const cards = await fetchSearchPage(domain, q, page, criteria.area);
             if (!cards.length) break;
             for (const c of cards) {
-              if (!seen.has(c.id) && domainCount < perDomain) {
+              if (!seen.has(c.id) && taken < quota) {
                 seen.set(c.id, c);
-                domainCount++;
+                taken++;
               }
             }
             if (cards.length < 10) break;
@@ -218,7 +222,6 @@ export const talentScraper: Scraper = {
             break;
           }
         }
-        if (domainCount >= perDomain) break;
       }
     }
 

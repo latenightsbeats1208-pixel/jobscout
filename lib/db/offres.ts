@@ -44,6 +44,8 @@ export type OffreRow = {
   } | null;
   /** Relecture par l'IA (exigences indispensables couvertes ou non), ou null. */
   ai_review: AiReview | null;
+  /** Problèmes relevés par le contrôle de qualité (lib/scrapers/quality.ts). */
+  quality_issues: string[] | null;
   is_vie: number;
   raw_payload: string | null;
   scrape_errors: string | null;
@@ -66,6 +68,8 @@ export type OffreSummary = Pick<
   score_reason: string | null;
   /** Avis de l'utilisateur (👍 / 👎), ou null. */
   feedback: OfferFeedback | null;
+  /** Problèmes relevés par le contrôle de qualité. */
+  quality_issues: string[];
 };
 
 export type OffersSort = "smart" | "newest" | "oldest" | "score";
@@ -149,6 +153,7 @@ type CacheRow = Pick<
 > & {
   head: string | null; excerpt: string | null; score_breakdown: string | null; has_cv: number; has_lm: number;
   feedback_verdict: FeedbackVerdict | null; feedback_reason: string | null;
+  quality_issues: string | null;
 };
 
 function buildOffresCache(fingerprint: string): OffresCache {
@@ -162,7 +167,7 @@ function buildOffresCache(fingerprint: string): OffresCache {
       substr(o.description_text, 1, 1000) AS excerpt,
       EXISTS(SELECT 1 FROM documents WHERE offre_id = o.id AND type = 'cv') AS has_cv,
       EXISTS(SELECT 1 FROM documents WHERE offre_id = o.id AND type = 'lm') AS has_lm,
-      f.verdict AS feedback_verdict, f.reason AS feedback_reason
+      f.verdict AS feedback_verdict, f.reason AS feedback_reason, o.quality_issues
     FROM offres o LEFT JOIN offre_feedback f ON f.offre_id = o.id
     -- Une offre jugée « pas pour moi » descend en fin de liste, sans disparaître.
     ORDER BY (f.verdict = 'down') ASC, ${SMART_ORDER}
@@ -185,6 +190,7 @@ function buildOffresCache(fingerprint: string): OffresCache {
       description_status: row.description_status, contract_category,
       has_cv: !!row.has_cv, has_lm: !!row.has_lm,
       feedback: row.feedback_verdict ? { verdict: row.feedback_verdict, reason: row.feedback_reason } : null,
+      quality_issues: parseJson<string[]>(row.quality_issues, []),
       // substr() compte des caractères, slice() des unités UTF-16 (émojis) : on
       // recoupe pour rendre exactement l’extrait d’avant.
       excerpt: (row.excerpt ?? "").slice(0, 1000), score_breakdown: row.score_breakdown,
@@ -295,6 +301,7 @@ export function searchOffres(opts: {
       contract_category: row.contract_category,
       has_cv: row.has_cv, has_lm: row.has_lm,
       feedback: row.feedback,
+      quality_issues: row.quality_issues,
     })),
     total: filtered.length,
     pageSize: OFFER_PAGE_SIZE,
@@ -334,9 +341,9 @@ export function upsertOffreFromSource(source: string, o: ScrapedOffre): number {
   const db = getDb();
   const stmt = db.prepare(`
     INSERT INTO offres (source, source_id, url, title, company, country, location, contract_type, salary,
-      description_html, description_text, description_status, posted_at, is_vie, raw_payload, scrape_errors)
+      description_html, description_text, description_status, posted_at, is_vie, raw_payload, scrape_errors, quality_issues)
     VALUES (@source, @source_id, @url, @title, @company, @country, @location, @contract_type, @salary,
-      @description_html, @description_text, @description_status, @posted_at, @is_vie, @raw_payload, @scrape_errors)
+      @description_html, @description_text, @description_status, @posted_at, @is_vie, @raw_payload, @scrape_errors, @quality_issues)
     ON CONFLICT(source, source_id) DO UPDATE SET
       url = excluded.url,
       title = excluded.title,
@@ -352,6 +359,7 @@ export function upsertOffreFromSource(source: string, o: ScrapedOffre): number {
       is_vie = excluded.is_vie,
       raw_payload = excluded.raw_payload,
       scrape_errors = excluded.scrape_errors,
+      quality_issues = excluded.quality_issues,
       scraped_at = datetime('now')
   `);
   stmt.run({
@@ -371,6 +379,7 @@ export function upsertOffreFromSource(source: string, o: ScrapedOffre): number {
     is_vie: o.is_vie ? 1 : 0,
     raw_payload: asJson(o.raw_payload),
     scrape_errors: o.scrape_errors ?? null,
+    quality_issues: o.quality_issues?.length ? asJson(o.quality_issues) : null,
   });
   const row = db
     .prepare("SELECT id FROM offres WHERE source = ? AND source_id = ?")
@@ -430,6 +439,7 @@ export function listOffres(opts?: {
     ...r,
     score_breakdown: parseJson(r.score_breakdown, null),
     ai_review: parseJson(r.ai_review, null),
+    quality_issues: parseJson(r.quality_issues, null),
     has_cv: !!r.has_cv,
     has_lm: !!r.has_lm,
     has_msg: !!r.has_msg,
@@ -460,6 +470,7 @@ export function getOffre(id: number): OffreFiltered | null {
     ...r,
     score_breakdown: parseJson(r.score_breakdown, null),
     ai_review: parseJson(r.ai_review, null),
+    quality_issues: parseJson(r.quality_issues, null),
     has_cv: !!r.has_cv,
     has_lm: !!r.has_lm,
     has_msg: !!r.has_msg,

@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Chip } from "@/components/ui/chip";
 import { Spinner } from "@/components/ui/spinner";
+import { SearchAreaSelect, SearchPlanPreview } from "@/components/app/search-area";
 import { cn } from "@/lib/utils";
 import { COUNTRY_GROUPS } from "@/lib/countries";
 import { SOURCES_META } from "@/lib/sources-meta";
@@ -304,7 +305,7 @@ function SearchCard({
         placeholder="Ex. Business Analyst, Développeur .NET…"
       />
       <p className="text-small text-textSecondary mt-2 mb-4">
-        Chaque offre est notée d'abord sur la proximité de son titre avec ces intitulés.
+        Chaque source cherche ces intitulés, et chaque offre est notée d'abord sur la proximité de son titre avec eux.
       </p>
 
       <p className="text-caption uppercase text-textSecondary mb-2">Secteurs</p>
@@ -329,6 +330,11 @@ function SearchCard({
         <Button variant="secondary" size="sm" onClick={addSector}>
           <Plus className="h-4 w-4" />
         </Button>
+      </div>
+
+      <div className="mb-4 space-y-3">
+        <SearchAreaSelect value={profile.search_area ?? ""} onChange={(search_area) => update({ search_area })} />
+        <SearchPlanPreview profile={profile} />
       </div>
 
       <p className="text-caption uppercase text-textSecondary mb-2">

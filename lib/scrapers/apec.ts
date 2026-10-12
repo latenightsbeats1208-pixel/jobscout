@@ -162,7 +162,7 @@ export const apecScraper: Scraper = {
     }
 
     const max = criteria.maxOffres ?? 60;
-    const queries = criteria.sectors.length ? criteria.sectors : [""];
+    const queries = criteria.queries.length ? criteria.queries : [""];
     const seen = new Map<string, ApecJob>();
 
     for (const q of queries) {

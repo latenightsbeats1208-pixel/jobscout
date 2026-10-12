@@ -455,6 +455,9 @@ function scorePrepared(
       parts.push(`compétences ancrées : ${skills.anchoredMatched.slice(0, 3).join(", ")}`);
     } else if (skills.matched.length) {
       parts.push(`compétences : ${skills.matched.slice(0, 3).join(", ")}`);
+    } else if (!offre.description_text.trim()) {
+      // Description écartée par le contrôle de qualité, ou introuvable.
+      parts.push("description indisponible : note fondée sur le seul titre");
     } else if (p.skills.length) {
       parts.push("aucune compétence du profil reconnue dans l'annonce");
     }

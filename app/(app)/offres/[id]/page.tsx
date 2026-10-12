@@ -114,10 +114,19 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
           {offre.description_status === "failed" ? (
             <div className="glass-panel flex items-start gap-3 p-5">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
-              <div><p className="font-semibold">Description indisponible</p><p className="mt-1 text-small text-textSecondary">Consultez l'annonce d'origine ou relancez un scan pour essayer de la récupérer.</p></div>
+              {offre.quality_issues?.some((i) => i === "description_sans_rapport" || i === "page_de_resultats") ? (
+                <div><p className="font-semibold">Description erronée</p><p className="mt-1 text-small text-textSecondary">Le texte récupéré {offre.quality_issues.includes("page_de_resultats") ? "est celui d'une page de résultats" : "ne parle pas de ce poste"} : il n'est ni affiché, ni pris en compte dans la note. Consultez l'annonce d'origine.</p></div>
+              ) : (
+                <div><p className="font-semibold">Description indisponible</p><p className="mt-1 text-small text-textSecondary">Consultez l'annonce d'origine ou relancez un scan pour essayer de la récupérer.</p></div>
+              )}
             </div>
           ) : (
-            <div className="glass-panel p-5 sm:p-7"><DescriptionRenderer html={offre.description_html} /></div>
+            <>
+              {offre.description_status === "partial" && (
+                <p className="mb-3 text-small text-textSecondary">Seul un extrait de l&apos;annonce a été récupéré : la note s&apos;appuie sur peu d&apos;éléments. L&apos;annonce d&apos;origine dit tout.</p>
+              )}
+              <div className="glass-panel p-5 sm:p-7"><DescriptionRenderer html={offre.description_html} /></div>
+            </>
           )}
         </article>
       </div>

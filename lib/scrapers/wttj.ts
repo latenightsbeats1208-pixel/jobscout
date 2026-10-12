@@ -1,3 +1,4 @@
+import { quotaPerQuery } from "@/lib/scan/search-plan";
 import "server-only";
 import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./base";
 import { htmlToText } from "./base";
@@ -152,35 +153,42 @@ export const wttjScraper: Scraper = {
     const targetCodes = new Set(
       criteria.countries.map((c) => nameToCode(c)).filter((c): c is string => !!c)
     );
-    const queries = criteria.sectors.length ? criteria.sectors : [""];
+    const queries = criteria.queries.length ? criteria.queries : [""];
+    const quota = quotaPerQuery(max, queries.length);
+    const inCountries = (h: Hit) => {
+      if (!targetCodes.size) return true;
+      const codes = (h.offices ?? []).map((o) => (o.country_code ?? "").toUpperCase()).filter(Boolean);
+      if (!codes.length) return true; // lieu inconnu : on laisse le scoring décider
+      return codes.some((c) => targetCodes.has(c));
+    };
 
-    // 1. Collecte via l'index : une recherche par secteur cible, 2 pages max.
-    const seen = new Map<string, Hit>();
+    // 1. Collecte via l'index : une recherche par poste visé, 2 pages max. Chaque
+    //    requête garde sa part, ses offres les plus récentes d'abord : un tri par
+    //    date sur l'ensemble laissait une requête très active évincer les autres.
+    //    Pas de zone : l'index n'a pas de paramètre de lieu connu.
+    const seen = new Set<string>();
+    const picked: Hit[] = [];
     let apiError: string | null = null;
     for (const q of queries) {
+      const own: Hit[] = [];
       for (let page = 0; page < PAGES_PER_QUERY; page++) {
         try {
           const { hits, nbPages } = await searchPage(q, page);
-          for (const h of hits) if (h?.objectID && !seen.has(h.objectID)) seen.set(h.objectID, h);
+          for (const h of hits) if (h?.objectID && !seen.has(h.objectID) && inCountries(h)) own.push(h);
           if (page + 1 >= nbPages) break;
         } catch (e) {
           apiError = e instanceof Error ? e.message : String(e);
           break;
         }
       }
+      own.sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""));
+      for (const h of own.slice(0, quota)) {
+        seen.add(h.objectID);
+        picked.push(h);
+      }
       if (apiError) break;
     }
-    if (apiError && seen.size === 0) throw new Error(apiError);
-
-    // 2. Filtre pays (si des pays cibles sont définis) + tri par date de publication.
-    const filtered = Array.from(seen.values()).filter((h) => {
-      if (!targetCodes.size) return true;
-      const codes = (h.offices ?? []).map((o) => (o.country_code ?? "").toUpperCase()).filter(Boolean);
-      if (!codes.length) return true; // lieu inconnu : on laisse le scoring décider
-      return codes.some((c) => targetCodes.has(c));
-    });
-    filtered.sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""));
-    const picked = filtered.slice(0, max);
+    if (apiError && picked.length === 0) throw new Error(apiError);
     onEvent({ kind: "list", source: SOURCE, total: picked.length });
 
     // 3. Conversion — aucune requête réseau supplémentaire.

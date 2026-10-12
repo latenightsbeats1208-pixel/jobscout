@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/db/queries";
 import { rescoreAllOffres } from "@/lib/scoring/rescore";
+import { recheckStoredQuality } from "@/lib/scrapers/quality-store";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -13,5 +14,6 @@ export async function POST() {
   if (!profile) {
     return NextResponse.json({ error: "Aucun profil actif" }, { status: 400 });
   }
-  return NextResponse.json({ ok: true, rescored: rescoreAllOffres(profile) });
+  const quality = recheckStoredQuality();
+  return NextResponse.json({ ok: true, quality, rescored: rescoreAllOffres(profile) });
 }

@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import { Spinner } from "@/components/ui/spinner";
 import type { ProfileFull } from "@/lib/cv/types";
+import { SearchAreaSelect } from "@/components/app/search-area";
 import { COUNTRY_GROUPS, FRANCOPHONIE } from "@/lib/countries";
 import { SOURCES_META, DEFAULT_SOURCE_IDS } from "@/lib/sources-meta";
 import { EngineNotice } from "@/components/app/engine-notice";
@@ -134,6 +135,11 @@ export function PreferencesForm() {
             <Plus className="h-4 w-4" /> Ajouter
           </Button>
         </div>
+      </Card>
+
+      <Card>
+        <h2 className="text-h3 mb-3">Où chercher</h2>
+        <SearchAreaSelect value={profile.search_area ?? ""} onChange={(search_area) => update({ search_area })} />
       </Card>
 
       <Card>

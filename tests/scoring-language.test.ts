@@ -4,7 +4,7 @@ import type { ProfileFull } from "@/lib/cv/types";
 
 function profile(languages: ProfileFull["languages"], summary = ""): ProfileFull {
   return {
-    summary, sectors: [], target_titles: [], target_countries: [], sources_enabled: [], preferred_contracts: ["cdi"],
+    summary, sectors: [], target_titles: [], target_countries: [], search_area: "", sources_enabled: [], preferred_contracts: ["cdi"],
     extraction_confidence: 0, experiences: [], educations: [], skills: [], languages,
   };
 }

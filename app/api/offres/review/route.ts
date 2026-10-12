@@ -43,6 +43,8 @@ export async function POST(req: NextRequest) {
     const head = rows
       .map((r, i) => ({ r, cached: cached[i], m: meta.get(r.id) }))
       .filter((x) => !parseJson<{ excluded?: string } | null>(x.m?.score_breakdown, null)?.excluded)
+      // Une description d'un autre poste ne vaut pas un appel payant.
+      .filter((x) => x.r.description_status !== "failed")
       .sort((a, b) => (b.m?.score ?? 0) - (a.m?.score ?? 0))
       .slice(0, limit);
     const todo = head.filter((x) => !x.cached);

@@ -1,3 +1,4 @@
+import type { SearchArea } from "@/lib/geo/fr";
 import "server-only";
 import type { Browser, BrowserContext } from "playwright";
 import {
@@ -22,11 +23,18 @@ export type ScrapedOffre = {
   is_vie: boolean;
   raw_payload: Record<string, unknown>;
   scrape_errors?: string;
+  /** Rempli par le contrôle de qualité du scan, pas par les collecteurs. */
+  quality_issues?: string[];
 };
 
 export type ScrapeCriteria = {
+  /** Requêtes envoyées aux sources : les postes visés (voir lib/scan/search-plan.ts). */
+  queries: string[];
+  /** Secteurs du profil : Civiweb s'en sert comme filtre ; les autres sources cherchent `queries`. */
   sectors: string[];
   countries: string[];
+  /** Zone de recherche en France ; null = tout le pays. Appliquée par les sources qui la vérifient. */
+  area?: SearchArea | null;
   maxOffres?: number;
 };
 

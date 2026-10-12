@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS profile (
   sectors TEXT NOT NULL DEFAULT '[]',
   target_titles TEXT NOT NULL DEFAULT '[]',
   target_countries TEXT NOT NULL DEFAULT '[]',
+  search_area TEXT NOT NULL DEFAULT '',
   sources_enabled TEXT NOT NULL DEFAULT '[]',
   preferred_contracts TEXT NOT NULL DEFAULT '["cdi","cdd"]',
   extraction_confidence INTEGER DEFAULT 0,
@@ -90,6 +91,8 @@ CREATE TABLE IF NOT EXISTS offres (
   raw_payload TEXT,
   scrape_errors TEXT,
   ai_review TEXT,
+  -- Problèmes relevés par le contrôle de qualité (lib/scrapers/quality.ts), en JSON.
+  quality_issues TEXT,
   UNIQUE(source, source_id)
 );
 

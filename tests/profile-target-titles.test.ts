@@ -8,6 +8,7 @@ const base: Omit<ProfileFull, "id" | "created_at" | "updated_at"> = {
   sectors: ["assurance"],
   target_titles: ["Business Analyst", "Consultant AMOA"],
   target_countries: ["France"],
+  search_area: "",
   sources_enabled: ["wttj"],
   preferred_contracts: ["cdi"],
   extraction_confidence: 80,

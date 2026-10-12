@@ -46,7 +46,7 @@ describe("niveau implicite du titre", () => {
 
 function profile(experiences: ProfileFull["experiences"]): ProfileFull {
   return {
-    sectors: [], target_titles: [], target_countries: [], sources_enabled: [], preferred_contracts: ["cdi"],
+    sectors: [], target_titles: [], target_countries: [], search_area: "", sources_enabled: [], preferred_contracts: ["cdi"],
     extraction_confidence: 0, experiences, educations: [], skills: [], languages: [],
   };
 }

@@ -103,6 +103,8 @@ export function buildProfileFromExtraction(
     sectors: [],
     target_titles: [...new Set((ex.target_titles ?? []).map((t) => t.trim()).filter(Boolean))].slice(0, 3),
     target_countries: [],
+    // Zone de recherche : tout le pays tant que l'utilisateur n'en choisit pas une.
+    search_area: "",
     sources_enabled: [],
     // Même défaut que le schéma zod, la colonne SQL et l'écran de préférences.
     preferred_contracts: ["cdi", "cdd"],

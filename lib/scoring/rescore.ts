@@ -5,14 +5,18 @@ import { setOffreScore } from "@/lib/db/offres";
 import { buildCorpus, scoreOffresLocal, type Corpus, type ScoringInput } from "./local";
 import { isReviewCurrent, offerHash, profileHash, type AiReview } from "./review";
 
-type ScoringRow = ScoringInput & { id: number; ai_review: string | null };
+type ScoringRow = ScoringInput & { id: number; ai_review: string | null; description_status: string };
 
-/** Le strict nécessaire à la note, pour toutes les offres de la base. */
+/**
+ * Le strict nécessaire à la note, pour toutes les offres de la base. Une
+ * description « failed » (celle d'un autre poste, une page de résultats) est
+ * vidée : l'offre est notée sur son seul titre plutôt que sur un texte faux.
+ */
 export function loadScoringRows(): ScoringRow[] {
   const rows = getDb()
-    .prepare("SELECT id, title, company, country, location, description_text, contract_type, ai_review FROM offres")
+    .prepare("SELECT id, title, company, country, location, description_text, contract_type, ai_review, description_status FROM offres")
     .all() as ScoringRow[];
-  return rows.map((r) => ({ ...r }));
+  return rows.map((r) => ({ ...r, description_text: r.description_status === "failed" ? "" : r.description_text }));
 }
 
 /** Rareté des mots mesurée sur toutes les offres de la base. */

@@ -68,6 +68,9 @@ const PHRASES: [RegExp, string][] = [
   [/\bmulti[\s-]*techniques?\b/g, " multitechnique "],
 ];
 
+/** Jetons nés d'une expression (« techlead », « dataengineer »…) : une annonce les paraphrase souvent. */
+export const PHRASE_TOKENS = new Set(PHRASES.flatMap(([, rep]) => rep.trim().split(/\s+/)));
+
 /** Formes équivalentes ramenées à une seule (français ↔ anglais, flexions). */
 const CANONICAL: Record<string, string> = {
   developpeur: "developpeur", developpeuse: "developpeur", developer: "developpeur", dev: "developpeur",

@@ -31,6 +31,12 @@ export function getDb(): DatabaseSync {
   try {
     db.exec(`ALTER TABLE offres ADD COLUMN ai_review TEXT`);
   } catch {}
+  try {
+    db.exec(`ALTER TABLE profile ADD COLUMN search_area TEXT NOT NULL DEFAULT ''`);
+  } catch {}
+  try {
+    db.exec(`ALTER TABLE offres ADD COLUMN quality_issues TEXT`);
+  } catch {}
 
   _db = db;
   return db;

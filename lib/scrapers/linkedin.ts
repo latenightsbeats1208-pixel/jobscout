@@ -31,7 +31,7 @@ export const linkedinScraper: Scraper = {
       // 2 pages max par combinaison secteur×pays : avec une liste de pays large
       // (ex. francophonie), on couvre chaque pays au lieu d'épuiser le budget
       // sur la première combinaison.
-      for (const sector of criteria.sectors.length ? criteria.sectors : [""]) {
+      for (const sector of criteria.queries.length ? criteria.queries : [""]) {
         for (const country of countries) {
           if (cards.length >= max) break;
           let start = 0;
