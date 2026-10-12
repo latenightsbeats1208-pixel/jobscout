@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, FilePlus2 } from "lucide-react";
+import { ArrowRight, FilePlus2, Gauge } from "lucide-react";
 import { redirect } from "next/navigation";
 import { getProfile } from "@/lib/db/queries";
 import { PageHeader } from "@/components/app/page-header";
@@ -30,6 +30,9 @@ export default async function ProfilePage() {
           <>
             <Button asChild variant="primary">
               <Link href="/profile/add-cv"><FilePlus2 className="h-4 w-4" /> Ajouter un CV</Link>
+            </Button>
+            <Button asChild variant="secondary">
+              <Link href="/profile/ats"><Gauge className="h-4 w-4" /> Analyser mon CV (ATS)</Link>
             </Button>
           </>
         }
