@@ -37,6 +37,7 @@ export function getDb(): DatabaseSync {
   try {
     db.exec(`ALTER TABLE offres ADD COLUMN quality_issues TEXT`);
   } catch {}
+  repairLegacyTalentRows(db);
 
   _db = db;
   return db;
@@ -93,4 +94,25 @@ export function plain<T>(row: T): T {
 }
 export function plainAll<T>(rows: T[]): T[] {
   return rows.map((r) => plain(r));
+}
+
+/**
+ * Réparation unique des offres Talent.com lues par l'ancien analyseur de cartes
+ * (jusqu'en octobre 2026) : il rangeait le nom de l'entreprise dans le contrat
+ * et ne trouvait jamais le lieu. Le « contrat » devient l'entreprise quand
+ * celle-ci manque, puis il est vidé. Le lieu reste vide : seule une nouvelle
+ * collecte le rend. Les lignes concernées se reconnaissent à leur lieu vide —
+ * et la réparation ne tourne qu'une fois, avant toute collecte par le nouvel
+ * analyseur.
+ */
+export function repairLegacyTalentRows(db: DatabaseSync): void {
+  const FLAG = "repair:talent-cards-2026-10";
+  if (db.prepare("SELECT 1 FROM settings WHERE key = ?").get(FLAG)) return;
+  db.exec(`
+    UPDATE offres
+    SET company = CASE WHEN company IS NULL OR company = '' THEN contract_type ELSE company END,
+        contract_type = NULL
+    WHERE source = 'talent' AND (location IS NULL OR location = '') AND contract_type IS NOT NULL
+  `);
+  db.prepare("INSERT INTO settings(key, value) VALUES(?, ?)").run(FLAG, new Date().toISOString());
 }

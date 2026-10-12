@@ -89,13 +89,17 @@ describe("HelloWork", () => {
 });
 
 describe("Talent.com", () => {
-  // Structure réelle d'une carte (octobre 2026) : entreprise et lieu dans <address>.
+  // Structure réelle d'une carte (octobre 2026) : entreprise et lieu dans <address>,
+  // contrat en pictogramme titré, date dans <time>, lien « Voir plus » dans l'extrait.
   const card = (id: string, title: string) => `
-    <div data-job-id="${id}" data-testid="jobcard-container-${id}">
+    <div data-job-id="${id}" data-new-id="9${id.length}0${id.length}" data-testid="jobcard-container-9${id.length}0${id.length}">
       <article data-testid="job-card-unified"><header><figure aria-hidden="true"></figure>
         <div><h2>${title}</h2><address><span>Entreprise Exemple</span><span aria-hidden="true">•</span><span>Écully, Auvergne-Rhone-Alpes, France</span></address></div>
         <div><button aria-label="Save job"><span></span></button></div>
-      </header><div><div><div><svg title="CDI"></svg></div></div></div></article>
+      </header>
+      <div><div><div><svg title="CDI"></svg><span>CDI</span></div><div><svg title="Quick Apply"></svg><span>Quick Apply</span></div></div>
+        <p>Nous recherchons un comptable pour tenir la comptabilité générale et préparer les clôtures mensuelles...<!-- --> <a href="/view?id=${id}-n">Voir plus</a></p></div>
+      <footer><div><time dateTime="2026-10-06T17:10:50Z">Dernière mise à jour : il y a 5 jours</time></div></footer></article>
     </div>`;
   const talentResponder = (url: URL) => {
     if (url.pathname === "/jobs") {
@@ -120,17 +124,34 @@ describe("Talent.com", () => {
     expect(offres.filter((o) => o.title.startsWith("Comptable"))).toHaveLength(10);
   });
 
-  // Bug connu (point 4 du plan d'amélioration) : l'analyseur cherche l'entreprise et
-  // le lieu dans des <p> alors que la carte les range dans <address>, et prend le
-  // premier <span> venu — l'entreprise — pour le contrat. Ce test passera le jour
-  // de la correction : retirer alors « .fails ».
-  it.fails("lit l'entreprise, le lieu et le contrat de la carte", async () => {
+  // L'ancienne lecture cherchait entreprise et lieu dans des <p> : aucun lieu sur
+  // 225 offres, et le nom de l'entreprise pris pour le contrat.
+  it("lit l'entreprise, le lieu, le contrat, la date et le lien de la carte", async () => {
     respond = talentResponder;
     const { talentScraper } = await import("@/lib/scrapers/talent");
     const [o] = await collect(talentScraper.scrape(criteria({ queries: ["Comptable"], area: null, maxOffres: 1 }), () => {}));
     expect(o.company).toBe("Entreprise Exemple");
     expect(o.location).toBe("Écully");
-    expect(o.contract_type).not.toBe("Entreprise Exemple");
+    expect(o.contract_type).toBe("CDI"); // « Quick Apply » n'est pas un contrat
+    expect(o.posted_at).toBe("2026-10-06");
+    expect(o.url).toMatch(/view\?id=.*-n$/); // lien canonique de la carte
+    expect(o.source_id).not.toMatch(/-n$/); // la clé en base ne change pas
+  });
+
+  it("complète la carte par les données structurées de la page de détail", async () => {
+    respond = (url) =>
+      url.pathname === "/jobs"
+        ? html(`<div data-job-id="x1" data-testid="jobcard-container-1"><article data-testid="job-card-unified"><header><div><h2>Comptable H/F</h2></div></header></article></div>`)
+        : html(`<script type="application/ld+json">${JSON.stringify({
+            "@context": "https://schema.org",
+            "@graph": [{ "@type": "BreadcrumbList" }, {
+              "@type": "JobPosting", title: "Comptable H/F", description: `<p>${detailText("Comptable")}</p>`, datePosted: "2026-10-01",
+              hiringOrganization: { name: "Exemple SA" }, jobLocation: { address: { addressLocality: "Lyon", addressCountry: "fr" } },
+            }],
+          })}</script>`);
+    const { talentScraper } = await import("@/lib/scrapers/talent");
+    const [o] = await collect(talentScraper.scrape(criteria({ queries: ["Comptable"], area: null, maxOffres: 1 }), () => {}));
+    expect([o.company, o.location, o.posted_at]).toEqual(["Exemple SA", "Lyon", "2026-10-01"]);
   });
 });
 

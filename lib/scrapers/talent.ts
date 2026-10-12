@@ -56,13 +56,30 @@ type Card = {
   city: string | null;
   country: string;
   contract: string | null;
+  salary: string | null;
+  posted_at: string | null;
   snippet: string;
 };
 
+/** Pictogrammes de carte qui ne sont pas un type de contrat. */
+const NOT_CONTRACT = /quick apply|easy apply|candidature (?:simplifi|rapide)|sponsoris/i;
+
+/**
+ * Carte de résultat (structure relevée sur fr.talent.com en octobre 2026) :
+ *   <h2>Titre</h2>
+ *   <address><span>Entreprise</span><span>•</span><span>Ville, Région, Pays</span></address>
+ *   <div><svg title="CDI"/><span>CDI</span></div>        ← contrat (pictogramme titré)
+ *   <p>Extrait… <a href="/view?id=…">Voir plus</a></p>
+ *   <footer><time dateTime="2026-10-06T17:10:50Z">…</time></footer>
+ * L'ancienne lecture cherchait entreprise et lieu dans des <p> d'en-tête : les
+ * 225 offres de la base n'avaient aucun lieu, et le premier <span> venu — le nom
+ * de l'entreprise — était pris pour le contrat.
+ */
 function parseSearchPage(html: string, domain: Domain): Card[] {
   const doc = parseDocument(html);
   const out: Card[] = [];
   for (const container of Array.from(doc.querySelectorAll('[data-testid^="jobcard-container-"]'))) {
+    // L'identifiant historique reste la clé de l'offre en base : en changer dédoublerait chaque offre déjà collectée.
     const id = container.getAttribute("data-job-id") ?? "";
     if (!id) continue;
     const card =
@@ -74,47 +91,61 @@ function parseSearchPage(html: string, domain: Domain): Card[] {
     const title = card.querySelector("h2")?.textContent?.trim() ?? "";
     if (!title) continue;
 
-    const header = card.querySelector("header") ?? card;
-    // Entreprise + lieu : les <p> courts (hors description longue) juste après le titre.
-    const shortPs = Array.from(header.querySelectorAll("p"))
-      .map((p) => p.textContent?.trim() ?? "")
-      .filter((t) => t.length > 0 && t.length < 80 && !/voir plus|quick apply/i.test(t));
-    let company = shortPs[0] ?? "";
-    let location = shortPs[1] ?? "";
-    // Certaines cartes concatènent "Entreprise • Ville, PAYS" dans un seul élément
-    if (!location && company.includes("•")) {
-      const parts = company.split("•").map((s) => s.trim());
-      company = parts[0] ?? "";
-      location = parts[1] ?? "";
+    let company = "";
+    let location = "";
+    const addressParts = Array.from(card.querySelectorAll("address span"))
+      .map((el) => el.textContent?.trim() ?? "")
+      .filter((t) => t && t !== "•");
+    if (addressParts.length) {
+      company = addressParts[0];
+      location = addressParts.length > 1 ? addressParts[addressParts.length - 1] : "";
+    } else {
+      // Mise en page antérieure : entreprise et lieu dans les <p> courts de l'en-tête.
+      const header = card.querySelector("header") ?? card;
+      const shortPs = Array.from(header.querySelectorAll("p"))
+        .map((el) => el.textContent?.trim() ?? "")
+        .filter((t) => t.length > 0 && t.length < 80 && !/voir plus|quick apply/i.test(t));
+      company = shortPs[0] ?? "";
+      location = shortPs[1] ?? "";
+      if (!location && company.includes("•")) {
+        const parts = company.split("•").map((x) => x.trim());
+        company = parts[0] ?? "";
+        location = parts[1] ?? "";
+      }
     }
 
     let contract: string | null = null;
-    for (const span of Array.from(header.querySelectorAll("div div span"))) {
-      const t = span.textContent?.trim() ?? "";
-      if (t && !["Quick Apply", "Voir plus"].includes(t)) {
-        contract = t;
-        break;
-      }
+    let salary: string | null = null;
+    for (const icon of Array.from(card.querySelectorAll("svg[title]"))) {
+      if (icon.closest("header")) continue;
+      const label = icon.getAttribute("title")?.trim() ?? "";
+      if (!label || NOT_CONTRACT.test(label)) continue;
+      if (label.includes("€")) salary ??= label;
+      else contract ??= label;
     }
 
     let snippet = "";
-    for (const p of Array.from(header.querySelectorAll("p"))) {
-      const t = p.textContent?.trim() ?? "";
-      if (t.length > 50 && !t.slice(0, 20).includes("Voir plus")) {
-        snippet = t.replace(/\.{3}Voir plus$/, "...");
+    for (const el of Array.from(card.querySelectorAll("p"))) {
+      if (el.closest("header")) continue;
+      const t = el.textContent?.trim() ?? "";
+      if (t.length > 50) {
+        snippet = t.replace(/\s*Voir plus$/, "").replace(/\.{3}$/, "…");
         break;
       }
     }
 
-    const city = location ? location.split(",")[0].trim() : null;
+    const posted = card.querySelector("time[datetime]")?.getAttribute("datetime") ?? "";
+    const href = card.querySelector('a[href*="view?id="]')?.getAttribute("href");
     out.push({
       id,
-      url: `https://${domain.host}/view?id=${id}`,
+      url: href ? new URL(href, `https://${domain.host}`).href : `https://${domain.host}/view?id=${id}`,
       title,
       company,
-      city,
+      city: location ? location.split(",")[0].trim() || null : null,
       country: domain.country,
       contract,
+      salary,
+      posted_at: /^\d{4}-\d{2}-\d{2}/.test(posted) ? posted.slice(0, 10) : null,
       snippet,
     });
   }
@@ -132,17 +163,14 @@ async function fetchSearchPage(domain: Domain, keywords: string, page: number, a
 
 async function enrich(card: Card): Promise<ScrapedOffre> {
   let descHtml: string | null = null;
-  let ldCompany: string | null = null;
-  let ldPosted: string | null = null;
+  let ld: ReturnType<typeof extractJobPostingLd> = null;
   try {
     const res = await fetch(card.url, { headers: BROWSER_HEADERS });
     if (res.ok) {
       const doc = parseDocument(await res.text());
-      const ld = extractJobPostingLd(doc);
+      ld = extractJobPostingLd(doc);
       if (ld?.description_html) {
         descHtml = ld.description_html;
-        ldCompany = ld.company;
-        ldPosted = ld.posted_at;
       } else {
         descHtml = firstMatchHtml(doc, DETAIL_SELECTORS, 200) ?? largestTextBlockHtml(doc, 300);
       }
@@ -163,15 +191,16 @@ async function enrich(card: Card): Promise<ScrapedOffre> {
     source_id: card.id,
     url: card.url,
     title: card.title,
-    company: card.company || ldCompany || "",
+    // La carte d'abord ; les données structurées de la page de détail complètent.
+    company: card.company || ld?.company || "",
     country: card.country,
-    location: card.city,
-    contract_type: card.contract,
-    salary: null,
+    location: card.city || ld?.locality || null,
+    contract_type: card.contract || ld?.contract_type || null,
+    salary: card.salary || ld?.salary || null,
     description_html,
     description_text,
     description_status: okStatus ? "ok" : "failed",
-    posted_at: ldPosted ? String(ldPosted).slice(0, 10) : null,
+    posted_at: card.posted_at || (ld?.posted_at ? String(ld.posted_at).slice(0, 10) : null),
     is_vie: detectVie({ source: SOURCE, title: card.title, description: description_text, url: card.url }),
     raw_payload: { id: card.id },
     scrape_errors: okStatus ? undefined : "description introuvable",
