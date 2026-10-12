@@ -30,8 +30,14 @@ const ref = (source: string, source_id: string, url = `https://example.org/${sou
 const status = (code: number, body = "") => new Response(code === 204 ? null : body, { status: code });
 
 // Données de page Talent.com, telles qu'échappées dans une chaîne JavaScript.
-const talentPage = (fields: { expired: string; found?: string; re_found?: string }) =>
-  `<script>self.__next_f.push([1,"{\\"system_date_found\\":\\"${fields.found ?? ""}\\",\\"system_date_expired\\":\\"${fields.expired}\\",\\"system_date_re_found\\":\\"${fields.re_found ?? ""}\\"}"])</script>`;
+type TalentJob = { legacy_id: string; expired?: string; found?: string; re_found?: string };
+const talentJob = (j: TalentJob) =>
+  `{\\"id\\":\\"6268951380\\",\\"system_date_found\\":\\"${j.found ?? ""}\\",` +
+  (j.expired === undefined ? "" : `\\"system_date_expired\\":\\"${j.expired}\\",\\"system_date_re_found\\":\\"${j.re_found ?? ""}\\",`) +
+  `\\"legacy_id\\":\\"${j.legacy_id}\\"}`;
+// Comme sur le site : les « offres similaires » d'abord, l'offre ensuite.
+const talentPage = (own: Omit<TalentJob, "legacy_id">, similar: TalentJob[] = []) =>
+  `<script>self.__next_f.push([1,"[${[...similar, { legacy_id: "04cce3927cc9", ...own }].map(talentJob).join(",")}]"])</script>`;
 
 describe("France Travail", () => {
   it("204 sur le JSON de l'offre : retirée ; 200 : en ligne ; panne : inconnu", async () => {
@@ -55,12 +61,30 @@ describe("HelloWork", () => {
 
 describe("Talent.com", () => {
   it("une date d'expiration ne vaut que si l'offre n'a pas été retrouvée depuis (cas réels)", () => {
-    expect(talentPageLiveness(talentPage({ expired: "" , found: "2026-10-06T19:12:26Z" }))).toBe("open");
+    const live = (own: Omit<TalentJob, "legacy_id">, similar?: TalentJob[]) => talentPageLiveness(talentPage(own, similar), "04cce3927cc9");
+    expect(live({ expired: "", found: "2026-10-06T19:12:26Z" })).toBe("open");
     // Expirée le 11/10 à 14 h 35, retrouvée à 18 h 40 : de nouveau en ligne.
-    expect(talentPageLiveness(talentPage({ expired: "2026-10-11T14:35:25.321000Z", found: "2026-10-09T11:27:39Z", re_found: "2026-10-11T18:40:52Z" }))).toBe("open");
-    expect(talentPageLiveness(talentPage({ expired: "2026-10-08T20:53:33.383000Z", found: "2026-07-05T18:51:04Z" }))).toBe("closed");
-    // Page sans ces données (format changé) : on ne conclut rien.
-    expect(talentPageLiveness("<html><title>Talent.com</title></html>")).toBe("unknown");
+    expect(live({ expired: "2026-10-11T14:35:25.321000Z", found: "2026-10-09T11:27:39Z", re_found: "2026-10-11T18:40:52Z" })).toBe("open");
+    expect(live({ expired: "2026-10-08T20:53:33.383000Z", found: "2026-07-05T18:51:04Z" })).toBe("closed");
+  });
+
+  it("ne lit que l'offre elle-même, jamais les offres similaires de la page (cas réel)", () => {
+    const similar = [
+      { legacy_id: "0f548893a88a", found: "2026-04-25T18:35:42Z", expired: "2026-10-10T08:00:00Z" },
+      { legacy_id: "91b54792094a", found: "2026-10-12T08:00:00Z" },
+    ];
+    expect(talentPageLiveness(talentPage({ expired: "", found: "2026-09-07T17:58:03Z" }, similar), "04cce3927cc9")).toBe("open");
+    expect(talentPageLiveness(talentPage({ expired: "2026-10-08T20:53:33Z", found: "2026-07-05T18:51:04Z" }, similar), "04cce3927cc9")).toBe("closed");
+    // Offre absente de la page, ou page sans ces données (format changé) : on ne conclut rien.
+    expect(talentPageLiveness(talentPage({ expired: "" }, similar), "ffffffffffff")).toBe("unknown");
+    expect(talentPageLiveness(talentPage({}), "04cce3927cc9")).toBe("unknown");
+    expect(talentPageLiveness("<html><title>Talent.com</title></html>", "04cce3927cc9")).toBe("unknown");
+  });
+
+  it("lit la page de l'offre et y cherche son identifiant", async () => {
+    respond = () => status(200, talentPage({ expired: "2026-10-08T20:53:33Z", found: "2026-07-05T18:51:04Z" }));
+    const r = ref("talent", "04cce3927cc9", "https://sn.talent.com/view?id=04cce3927cc9");
+    expect((await checkLiveness([r])).results.get(r.id)).toBe("closed");
   });
 
   it("404 : retirée", async () => {

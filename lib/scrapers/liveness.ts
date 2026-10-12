@@ -9,11 +9,11 @@ import { WTTJ_ALGOLIA } from "./wttj";
  * - France Travail : le JSON de la description répond 204 (offre inconnue ou
  *   retirée) ; 200 tant qu'elle est en ligne ;
  * - HelloWork : 410 Gone pour une offre expirée, 404 pour un numéro inconnu ;
- * - Talent.com : 404 pour une offre retirée ou inconnue. Sinon, la page porte
- *   une date d'expiration (« system_date_expired ») qui ne vaut que si l'offre
- *   n'a pas été retrouvée depuis (« system_date_found », « …_re_found ») :
- *   sur 225 offres, 62 pages en 200 portaient une date d'expiration, souvent
- *   suivie d'une remise en ligne quelques heures plus tard ;
+ * - Talent.com : 404 pour une offre retirée ou inconnue (8 sur 225, stables
+ *   d'un passage à l'autre). Sinon, la page porte une date d'expiration
+ *   (« system_date_expired ») qui ne vaut que si l'offre n'a pas été
+ *   retrouvée depuis (« system_date_found », « …_re_found ») : beaucoup sont
+ *   remises en ligne quelques heures après leur expiration ;
  * - Welcome to the Jungle : l'offre disparaît de l'index de recherche (lecture
  *   par identifiant, 50 à la fois). Les pages HTML sont derrière un défi
  *   anti-robot et ne sont pas interrogées.
@@ -63,21 +63,46 @@ async function checkHellowork(ref: LivenessRef): Promise<Liveness> {
   return res.status === 200 ? "open" : "unknown";
 }
 
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** Champ des données de la page, échappé dans une chaîne JavaScript : \"system_date_expired\":\"…\" */
-function talentDate(html: string, field: string): number | null {
-  const m = html.match(new RegExp(`${field}\\\\*"\\s*:\\s*\\\\*"([^"\\\\]*)`));
-  if (!m) return null;
-  const t = Date.parse(m[1]);
-  return Number.isNaN(t) ? 0 : t;
-}
+const talentField = (name: string, value = '[^"\\\\]*') => new RegExp(`${name}\\\\*"\\s*:\\s*\\\\*"(${value})`, "g");
 
-/** Page d'une offre Talent.com (statut 200) : retirée si expirée et jamais retrouvée depuis. */
-export function talentPageLiveness(html: string): Liveness {
-  const expired = talentDate(html, "system_date_expired");
+/**
+ * Page d'une offre Talent.com (statut 200) : retirée si expirée et jamais
+ * retrouvée depuis. La page porte aussi les données des « offres similaires »,
+ * AVANT celles de l'offre : on ne lit que l'objet de l'offre, qui se termine
+ * par son identifiant (« legacy_id »), soit les champs situés entre le
+ * legacy_id de l'objet précédent et le sien. Objet introuvable : « unknown ».
+ */
+export function talentPageLiveness(html: string, sourceId: string): Liveness {
+  const own = talentField("legacy_id", escapeRegExp(sourceId)).exec(html);
+  if (!own) return "unknown";
+  const before = html.slice(0, own.index);
+  const previous = [...before.matchAll(talentField("legacy_id"))].at(-1);
+  const object = before.slice(previous ? previous.index + previous[0].length : 0);
+  const last = (name: string): number | null => {
+    const m = [...object.matchAll(talentField(name))].at(-1);
+    if (!m) return null;
+    const t = Date.parse(m[1]);
+    return Number.isNaN(t) ? 0 : t;
+  };
+  const expired = last("system_date_expired");
   if (expired === null) return "unknown"; // format de page inconnu
   if (!expired) return "open";
-  const seenAgain = Math.max(talentDate(html, "system_date_found") ?? 0, talentDate(html, "system_date_re_found") ?? 0);
+  const seenAgain = Math.max(last("system_date_found") ?? 0, last("system_date_re_found") ?? 0);
   return seenAgain > expired ? "open" : "closed";
+}
+
+/** Identifiant de l'offre dans la page : celui de la base, sinon celui du lien (« view?id=… »). */
+function talentIds(ref: LivenessRef): string[] {
+  const fromUrl = (() => {
+    try {
+      return new URL(ref.url).searchParams.get("id")?.replace(/-n$/, "") ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  return [...new Set([ref.source_id, fromUrl].filter((id): id is string => !!id))];
 }
 
 async function checkTalent(ref: LivenessRef): Promise<Liveness> {
@@ -85,7 +110,12 @@ async function checkTalent(ref: LivenessRef): Promise<Liveness> {
   if (!res) return "unknown";
   if (res.status === 410 || res.status === 404) return "closed";
   if (res.status !== 200) return "unknown";
-  return talentPageLiveness(await res.text().catch(() => ""));
+  const html = await res.text().catch(() => "");
+  for (const id of talentIds(ref)) {
+    const state = talentPageLiveness(html, id);
+    if (state !== "unknown") return state;
+  }
+  return "unknown";
 }
 
 async function checkWttjBatch(refs: LivenessRef[]): Promise<Map<number, Liveness>> {
