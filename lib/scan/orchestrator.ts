@@ -95,6 +95,9 @@ export async function* runScan(
         // Contrôle de qualité avant l'enregistrement : textes parasites retirés,
         // description d'un autre poste ou page de résultats marquées « failed ».
         const q = assessQuality(offre);
+        // Écartée par le contrôle alors que la source la donnait bonne : un échec
+        // dans le bilan, sans quoi « vues » ≠ « insérées » + « échecs ».
+        if (q.status === "failed" && offre.description_status !== "failed") failCount++;
         offre.description_status = q.status;
         offre.description_text = q.description_text;
         offre.description_html = q.description_html;
