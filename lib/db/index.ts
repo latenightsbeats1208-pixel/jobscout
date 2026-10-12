@@ -37,7 +37,18 @@ export function getDb(): DatabaseSync {
   try {
     db.exec(`ALTER TABLE offres ADD COLUMN quality_issues TEXT`);
   } catch {}
+  for (const column of ["first_seen_at TEXT", "closed_at TEXT", "checked_at TEXT", "duplicate_of INTEGER"]) {
+    try {
+      db.exec(`ALTER TABLE offres ADD COLUMN ${column}`);
+    } catch {}
+  }
+  try {
+    db.exec(`ALTER TABLE scan_runs ADD COLUMN summary TEXT`);
+  } catch {}
+  // Offres collectées avant la colonne : leur dernière collecte, faute de mieux.
+  db.exec("UPDATE offres SET first_seen_at = scraped_at WHERE first_seen_at IS NULL");
   repairLegacyTalentRows(db);
+  repairFranceTravailCompanies(db);
 
   _db = db;
   return db;
@@ -115,4 +126,34 @@ export function repairLegacyTalentRows(db: DatabaseSync): void {
     WHERE source = 'talent' AND (location IS NULL OR location = '') AND contract_type IS NOT NULL
   `);
   db.prepare("INSERT INTO settings(key, value) VALUES(?, ?)").run(FLAG, new Date().toISOString());
+}
+
+/**
+ * Réparation unique des offres France Travail anonymes : l'analyseur prenait le
+ * département de la ligne « 26 - Romans-sur-Isère » pour le nom de l'entreprise.
+ */
+export function repairFranceTravailCompanies(db: DatabaseSync): void {
+  const FLAG = "repair:ft-company-departement-2026-10";
+  if (db.prepare("SELECT 1 FROM settings WHERE key = ?").get(FLAG)) return;
+  db.exec(`
+    UPDATE offres SET company = ''
+    WHERE source = 'francetravail'
+      AND (company GLOB '[0-9][0-9]' OR company GLOB '[0-9][0-9][0-9]' OR upper(company) IN ('2A', '2B'))
+  `);
+  db.prepare("INSERT INTO settings(key, value) VALUES(?, ?)").run(FLAG, new Date().toISOString());
+}
+
+/**
+ * Empreinte de la base, lue à chaque appel (deux lectures de quelques microsecondes) :
+ * - `PRAGMA data_version` change dès qu'une AUTRE connexion valide une écriture
+ *   (autre instance du module, script de scan quotidien, autre processus) ;
+ * - `total_changes()` compte les lignes écrites par CETTE connexion (scan, re-score,
+ *   documents générés, suppressions…), y compris les écritures sans date comme le re-score.
+ * Toute écriture la change donc ; aucune ne peut laisser périmé ce qui en dépend.
+ */
+export function dbFingerprint(): string {
+  const db = getDb();
+  const version = (db.prepare("PRAGMA data_version").get() as { data_version: number }).data_version;
+  const changes = (db.prepare("SELECT total_changes() AS n").get() as { n: number }).n;
+  return `${version}:${changes}`;
 }

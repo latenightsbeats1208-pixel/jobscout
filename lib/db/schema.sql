@@ -93,6 +93,16 @@ CREATE TABLE IF NOT EXISTS offres (
   ai_review TEXT,
   -- Problèmes relevés par le contrôle de qualité (lib/scrapers/quality.ts), en JSON.
   quality_issues TEXT,
+  -- Première collecte (scraped_at est la dernière) : seul repère de fraîcheur
+  -- pour une offre sans date de publication.
+  first_seen_at TEXT,
+  -- Offre constatée retirée par sa source (lib/scrapers/liveness.ts), et date
+  -- de la dernière vérification.
+  closed_at TEXT,
+  checked_at TEXT,
+  -- Même offre publiée ailleurs (autre lieu, autre source) : id de l'offre qui
+  -- représente le groupe dans la liste (lib/scan/dedupe.ts). NULL = affichée.
+  duplicate_of INTEGER,
   UNIQUE(source, source_id)
 );
 
@@ -158,5 +168,7 @@ CREATE TABLE IF NOT EXISTS scan_runs (
   started_at TEXT NOT NULL DEFAULT (datetime('now')),
   finished_at TEXT,
   status TEXT NOT NULL DEFAULT 'running',
-  log TEXT NOT NULL DEFAULT '[]'
+  log TEXT NOT NULL DEFAULT '[]',
+  -- Bilan en JSON : sources en échec et leur motif (statut « partial » ou « failed »).
+  summary TEXT
 );

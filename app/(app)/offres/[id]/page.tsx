@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ArrowUpRight, AlertTriangle, CalendarDays, MapPin } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, AlertTriangle, CalendarDays, Copy, MapPin } from "lucide-react";
 import { getOffre, type OffreFiltered } from "@/lib/db/offres";
 import { listDocuments, offreFolderPath } from "@/lib/db/documents";
 import { getDb } from "@/lib/db";
@@ -9,7 +9,10 @@ import { DescriptionRenderer } from "@/components/app/description-renderer";
 import { ActionsPanel } from "./actions";
 import { OfferFeedbackControl } from "@/components/app/offer-feedback";
 import { getFeedback } from "@/lib/db/feedback";
-import { formatRelativeDate, scoreColor } from "@/lib/utils";
+import { getOffreSiblings, type OffreSibling } from "@/lib/db/duplicates";
+import { CHECKABLE_SOURCES } from "@/lib/scrapers/liveness";
+import { OfferLiveness } from "@/components/app/offer-liveness";
+import { formatRelativeDate, fromSqliteUtc, scoreColor } from "@/lib/utils";
 import { CONTRACT_LABELS } from "@/lib/contracts";
 import { SOURCES_META } from "@/lib/sources-meta";
 
@@ -32,6 +35,7 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
   const contractLabel = offre.contract_category !== "autre" ? CONTRACT_LABELS[offre.contract_category] : null;
   // Le libellé brut de la source n'est répété que s'il apporte une précision (« Temps plein »…).
   const rawContract = offre.contract_type && offre.contract_type.trim().toLowerCase() !== contractLabel?.toLowerCase() ? offre.contract_type : null;
+  const siblings = getOffreSiblings(offre.id);
 
   return (
     <div>
@@ -52,7 +56,12 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-small text-textSecondary">
           {(offre.location || offre.country) && <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {offre.location ?? offre.country}{offre.location && offre.country && offre.location !== offre.country ? `, ${offre.country}` : ""}</span>}
-          {offre.posted_at && <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" /> {formatRelativeDate(offre.posted_at)}</span>}
+          {offre.posted_at ? (
+            <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" /> {formatRelativeDate(offre.posted_at)}</span>
+          ) : offre.first_seen_at ? (
+            // Sans date de publication, la première collecte dit au moins depuis quand l'offre est connue.
+            <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" /> Date inconnue · repérée {formatRelativeDate(fromSqliteUtc(offre.first_seen_at))}</span>
+          ) : null}
           <span className="font-medium">Score {score.label.toLowerCase()}</span>
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -63,6 +72,11 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
             Voir l'annonce d'origine <ArrowUpRight className="h-4 w-4" />
           </a>
         </div>
+        <OfferLiveness
+          offreId={offre.id}
+          sourceLabel={sourceLabel}
+          initial={{ checkable: CHECKABLE_SOURCES.has(offre.source), closed_at: offre.closed_at, checked_at: offre.checked_at }}
+        />
       </header>
 
       <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-7">
@@ -75,6 +89,7 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
             initialTrackingStatus={existingApplication?.status ?? null}
             initialFolder={docs.length > 0 ? offreFolderPath(offre.id, offre.company, offre.title) : null}
           />
+          {siblings.length > 0 && <SiblingsPanel siblings={siblings} />}
           <section aria-label="Votre avis" className="glass-panel p-5">
             <OfferFeedbackControl offerId={offre.id} initial={getFeedback(offre.id)} />
           </section>
@@ -131,6 +146,30 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
         </article>
       </div>
     </div>
+  );
+}
+
+/** Mêmes entreprise et intitulé ailleurs : autres lieux, autres sources (lib/scan/dedupe.ts). */
+function SiblingsPanel({ siblings }: { siblings: OffreSibling[] }) {
+  return (
+    <section aria-labelledby="siblings-title" className="glass-panel p-5">
+      <h2 id="siblings-title" className="flex items-center gap-2 text-h3"><Copy className="h-4 w-4 text-textSecondary" /> Aussi publiée ailleurs</h2>
+      <p className="mt-1 text-small text-textSecondary">Même entreprise, même intitulé : regroupées en une seule offre dans la liste.</p>
+      <ul className="mt-4 space-y-2">
+        {siblings.map((s) => (
+          <li key={s.id}>
+            <Link href={`/offres/${s.id}`} className="flex items-baseline justify-between gap-3 text-small hover:text-accent">
+              <span className="min-w-0">
+                <span className="font-medium">{s.location || "Lieu non précisé"}</span>
+                <span className="text-textSecondary"> · {SOURCES_META.find((m) => m.id === s.source)?.label ?? s.source}</span>
+                {s.closed_at && <span className="text-textSecondary"> · retirée</span>}
+              </span>
+              <span className="shrink-0 tabular-nums text-textSecondary">{s.score ?? 0}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

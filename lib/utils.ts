@@ -27,6 +27,11 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Date SQLite (« 2026-10-11 14:09:57 », UTC sans fuseau) → ISO lisible par Date. */
+export function fromSqliteUtc(value: string): string {
+  return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value) ? `${value.replace(" ", "T")}Z` : value;
+}
+
 export function formatRelativeDate(iso: string): string {
   const date = new Date(iso);
   const diff = Date.now() - date.getTime();

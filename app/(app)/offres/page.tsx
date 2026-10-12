@@ -4,6 +4,10 @@ import { OffresList } from "./list";
 import { ScanButton } from "./scan-button";
 import { ReviewButton } from "./review-button";
 import { FeedbackSummary } from "@/components/app/offer-feedback";
+import { lastFinishedScan, type LastScan } from "@/lib/db/scans";
+import { sourceLabel } from "@/lib/sources-meta";
+import { fromSqliteUtc } from "@/lib/utils";
+import { AlertTriangle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -36,8 +40,33 @@ export default async function OffresPage({ searchParams }: { searchParams: Promi
         subtitle={subtitle}
         actions={<><ReviewButton /><ScanButton /></>}
       />
+      <LastScanNotice scan={lastFinishedScan()} />
       <FeedbackSummary className="-mt-4 mb-6 max-w-[75ch]" />
       <OffresList initialResult={initial} initialVieOnly={vieOnly} initialMinScore={minScore} />
     </>
+  );
+}
+
+/**
+ * Rappel tant que le dernier scan est incomplet : la fenêtre du scan se ferme,
+ * et une source muette passerait sinon pour une source sans nouvelle offre.
+ */
+function LastScanNotice({ scan }: { scan: LastScan | null }) {
+  if (!scan || scan.status === "done") return null;
+  const when = new Date(fromSqliteUtc(scan.finished_at)).toLocaleString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+  return (
+    <div role="status" className="glass-panel -mt-4 mb-6 flex max-w-[75ch] items-start gap-3 p-4">
+      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+      <div className="min-w-0 text-small">
+        <p className="font-semibold">
+          {scan.status === "failed" ? "Le dernier scan n'a rien rapporté" : "Le dernier scan est incomplet"} <span className="font-normal text-textSecondary">({when})</span>
+        </p>
+        <ul className="mt-1 space-y-1 text-textSecondary">
+          {scan.failures.map((f) => (
+            <li key={f.source}><span className="font-medium text-text">{sourceLabel(f.source)}</span> : {f.message}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }

@@ -184,6 +184,49 @@ describe("Welcome to the Jungle", () => {
 });
 
 describe("France Travail (pages publiques)", () => {
+  // Carte réelle d'une offre anonyme (octobre 2026) : le département en tête de ligne, sans entreprise.
+  const card = (id: string, subtext: string, date: string) => `
+    <li data-id-offre="${id}" class="result"><a href="/offres/recherche/detail/${id}"><div class="media-body">
+      <h2 class="t4 media-heading"><span class="media-heading-title">Agent de service (H/F)</span></h2>
+      <p translate="no" class="subtext">${subtext}</p>
+      <p class="description">Entretien des locaux et des espaces communs de la résidence, en équipe avec les agents du site...</p>
+      <p class="contrat visible-xs">CDI - Temps plein</p><p class="date">${date}</p>
+    </div></a></li>`;
+
+  it("offre anonyme : ni département pris pour l'entreprise, ni date perdue", async () => {
+    respond = (url) => {
+      if (url.pathname === "/offres/recherche") {
+        return html(url.searchParams.get("page") === "1"
+          ? card("901AAAA", "26 - <span>Romans-sur-Isère</span>", "Publié hier") + card("901BBBB", "RAVI PROPRETE - <span>26 - Chatuzange-le-Goubet</span>", "Publié il y a 3 jours")
+          : "");
+      }
+      if (url.pathname.startsWith("/api-descriptifoffre/")) {
+        return new Response(JSON.stringify({ numeroOffre: `Offre n° ${url.pathname.split("/").pop()}`, descriptif: detailText("Agent de service"), dateDerniereModification: "1er octobre 2026" }), { headers: { "content-type": "application/json" } });
+      }
+      return html("");
+    };
+    const { francetravailScraper } = await import("@/lib/scrapers/francetravail");
+    const offres = await collect(francetravailScraper.scrape(criteria({ queries: ["Agent de service"], area: null }), () => {}));
+    const day = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+    expect(offres.map((o) => [o.company, o.location, o.posted_at])).toEqual([
+      ["", "Romans-sur-Isère", day(1)],
+      ["RAVI PROPRETE", "Chatuzange-le-Goubet", day(3)],
+    ]);
+    // La date de la carte n'entre pas dans l'extrait de l'annonce.
+    expect(offres.every((o) => !o.description_text.includes("Publié"))).toBe(true);
+  });
+
+  it("lit les dates écrites en toutes lettres", async () => {
+    const { parseFrenchDate, parsePublishedAgo } = await import("@/lib/scrapers/francetravail");
+    expect(parseFrenchDate("24 septembre 2026")).toBe("2026-09-24");
+    expect(parseFrenchDate("1er août 2026")).toBe("2026-08-01");
+    expect(parseFrenchDate("septembre")).toBeNull();
+    const now = new Date("2026-10-12T10:00:00Z");
+    expect(parsePublishedAgo("Publié aujourd'hui", now)).toBe("2026-10-12");
+    expect(parsePublishedAgo("Publié il y a 6 jours", now)).toBe("2026-10-06");
+    expect(parsePublishedAgo("Publié il y a plus de 30 jours", now)).toBeNull();
+  });
+
   it("envoie la zone en code « 69D » ou « 84R » pour chaque poste visé", async () => {
     respond = () => html("");
     const { francetravailScraper } = await import("@/lib/scrapers/francetravail");

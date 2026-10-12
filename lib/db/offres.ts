@@ -1,5 +1,6 @@
 import "server-only";
-import { getDb, asJson, parseJson } from "./index";
+import { getDb, asJson, parseJson, dbFingerprint } from "./index";
+import { syncDuplicates } from "./duplicates";
 import type { ScrapedOffre } from "@/lib/scrapers/base";
 import type { ScoreResult } from "@/lib/scoring/local";
 import type { AiReview } from "@/lib/scoring/review";
@@ -46,6 +47,13 @@ export type OffreRow = {
   ai_review: AiReview | null;
   /** Problèmes relevés par le contrôle de qualité (lib/scrapers/quality.ts). */
   quality_issues: string[] | null;
+  /** Première collecte (UTC, format SQLite). */
+  first_seen_at: string | null;
+  /** Constat de retrait par la source (UTC, format SQLite), ou null. */
+  closed_at: string | null;
+  checked_at: string | null;
+  /** Offre qui représente son groupe de doublons, ou null. */
+  duplicate_of: number | null;
   is_vie: number;
   raw_payload: string | null;
   scrape_errors: string | null;
@@ -58,11 +66,14 @@ export type OffreFiltered = OffreRow & {
   contract_category: ContractCategory;
 };
 
+/** Autre publication de la même offre, regroupée sous celle de la liste. */
+export type OfferVariant = { id: number; source: string; location: string | null; closed: boolean };
+
 export type OffreSummary = Pick<
   OffreFiltered,
   "id" | "source" | "url" | "title" | "company" | "country" | "location" |
   "posted_at" | "score" | "is_vie" | "description_status" | "contract_category" |
-  "has_cv" | "has_lm"
+  "has_cv" | "has_lm" | "first_seen_at" | "closed_at"
 > & {
   description_text: string;
   score_reason: string | null;
@@ -70,6 +81,8 @@ export type OffreSummary = Pick<
   feedback: OfferFeedback | null;
   /** Problèmes relevés par le contrôle de qualité. */
   quality_issues: string[];
+  /** Mêmes offres publiées ailleurs (autres lieux, autres sources). */
+  variants: OfferVariant[];
 };
 
 export type OffersSort = "smart" | "newest" | "oldest" | "score";
@@ -84,10 +97,18 @@ export type OffersSearch = {
     sources: string[];
     contractCounts: Record<ContractCategory, number>;
     hasVie: boolean;
+    /** Offres retirées par leur source, masquées sauf demande. */
+    closed: number;
   };
 };
 
 const OFFER_PAGE_SIZE = 24;
+/**
+ * Offres que la liste montre par défaut : ni doublon d'une autre, ni retirée par
+ * sa source. Les compteurs de l'accueil s'en servent pour concorder avec la liste
+ * (appeler syncDuplicates() avant).
+ */
+export const VISIBLE_SQL = "duplicate_of IS NULL AND closed_at IS NULL";
 // Même classement pour la liste, l’API paginée et les suggestions de l’accueil.
 // Le bonus de fraîcheur reste volontairement léger face au score du profil.
 // Départage final par id : sans lui, l’ordre des ex æquo dépend du plan de
@@ -99,6 +120,10 @@ const SMART_ORDER = `score + CASE
   WHEN julianday('now') - julianday(posted_at) <= 7 THEN 2
   ELSE 0
 END DESC, score DESC, posted_at DESC, o.id DESC`;
+// Ordre de la liste : une offre retirée par sa source, puis une offre jugée
+// « pas pour moi », descendent en fin de liste sans disparaître.
+const LIST_FROM = "offres o LEFT JOIN offre_feedback f ON f.offre_id = o.id";
+const LIST_ORDER = `(o.closed_at IS NOT NULL) ASC, (f.verdict = 'down') ASC, ${SMART_ORDER}`;
 
 function normalizeSearch(value: string): string {
   return value.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
@@ -131,25 +156,11 @@ type OffresCache = {
 const ORDER_TTL_MS = 60_000;
 let offresCache: OffresCache | null = null;
 
-/**
- * Empreinte de la base, lue à chaque appel (deux lectures de quelques microsecondes) :
- * - `PRAGMA data_version` change dès qu’une AUTRE connexion valide une écriture
- *   (autre instance du module, script de scan quotidien, autre processus) ;
- * - `total_changes()` compte les lignes écrites par CETTE connexion (scan, re-score,
- *   documents générés, suppressions…), y compris les écritures sans date comme le re-score.
- * Toute écriture invalide donc le cache ; aucune ne peut le laisser périmé.
- */
-function dbFingerprint(): string {
-  const db = getDb();
-  const version = (db.prepare("PRAGMA data_version").get() as { data_version: number }).data_version;
-  const changes = (db.prepare("SELECT total_changes() AS n").get() as { n: number }).n;
-  return `${version}:${changes}`;
-}
-
 type CacheRow = Pick<
   OffreRow,
   "id" | "source" | "url" | "title" | "company" | "country" | "location" |
-  "contract_type" | "description_status" | "posted_at" | "score" | "is_vie"
+  "contract_type" | "description_status" | "posted_at" | "score" | "is_vie" |
+  "first_seen_at" | "closed_at" | "duplicate_of"
 > & {
   head: string | null; excerpt: string | null; score_breakdown: string | null; has_cv: number; has_lm: number;
   feedback_verdict: FeedbackVerdict | null; feedback_reason: string | null;
@@ -163,14 +174,14 @@ function buildOffresCache(fingerprint: string): OffresCache {
   const rows = getDb().prepare(`
     SELECT o.id, o.source, o.url, o.title, o.company, o.country, o.location,
       o.contract_type, o.description_status, o.posted_at, o.score, o.score_breakdown, o.is_vie,
+      o.first_seen_at, o.closed_at, o.duplicate_of,
       substr(o.description_text, 1, 4000) AS head,
       substr(o.description_text, 1, 1000) AS excerpt,
       EXISTS(SELECT 1 FROM documents WHERE offre_id = o.id AND type = 'cv') AS has_cv,
       EXISTS(SELECT 1 FROM documents WHERE offre_id = o.id AND type = 'lm') AS has_lm,
       f.verdict AS feedback_verdict, f.reason AS feedback_reason, o.quality_issues
-    FROM offres o LEFT JOIN offre_feedback f ON f.offre_id = o.id
-    -- Une offre jugée « pas pour moi » descend en fin de liste, sans disparaître.
-    ORDER BY (f.verdict = 'down') ASC, ${SMART_ORDER}
+    FROM ${LIST_FROM}
+    ORDER BY ${LIST_ORDER}
   `).all() as CacheRow[];
 
   const contractCounts = Object.fromEntries(CONTRACT_ORDER.map((contract) => [contract, 0])) as Record<ContractCategory, number>;
@@ -178,17 +189,31 @@ function buildOffresCache(fingerprint: string): OffresCache {
   const sources = new Set<string>();
   const byId = new Map<number, CachedOffre>();
   const smart: CachedOffre[] = [];
+  const variants: CacheRow[] = [];
+  let open = 0;
+  let closed = 0;
   for (const row of rows) {
+    // Un doublon n'a pas sa propre ligne : il s'affiche sous l'offre de son groupe.
+    if (row.duplicate_of != null) {
+      variants.push(row);
+      continue;
+    }
     const contract_category = classifyContract({ ...row, description_text: row.head ?? "" });
-    contractCounts[contract_category]++;
-    if (row.country) countries.add(row.country);
-    sources.add(row.source);
+    // Facettes et compteurs décrivent ce que la liste montre par défaut : les offres en ligne.
+    if (row.closed_at) closed++;
+    else {
+      open++;
+      contractCounts[contract_category]++;
+      if (row.country) countries.add(row.country);
+      sources.add(row.source);
+    }
     const offer: CachedOffre = {
       id: row.id, source: row.source, url: row.url, title: row.title,
       company: row.company, country: row.country, location: row.location,
       posted_at: row.posted_at, score: row.score, is_vie: row.is_vie,
       description_status: row.description_status, contract_category,
       has_cv: !!row.has_cv, has_lm: !!row.has_lm,
+      first_seen_at: row.first_seen_at, closed_at: row.closed_at, variants: [],
       feedback: row.feedback_verdict ? { verdict: row.feedback_verdict, reason: row.feedback_reason } : null,
       quality_issues: parseJson<string[]>(row.quality_issues, []),
       // substr() compte des caractères, slice() des unités UTF-16 (émojis) : on
@@ -198,26 +223,34 @@ function buildOffresCache(fingerprint: string): OffresCache {
     byId.set(offer.id, offer);
     smart.push(offer);
   }
+  for (const v of variants) {
+    const rep = byId.get(v.duplicate_of!);
+    if (!rep) continue;
+    rep.variants.push({ id: v.id, source: v.source, location: v.location, closed: !!v.closed_at });
+    if (!rep.closed_at && !v.closed_at) sources.add(v.source);
+  }
   return {
     fingerprint, byId, smart, orderedAt: Date.now(), haystacks: null,
     facets: {
-      total: rows.length,
+      total: open,
       countries: [...countries].sort((a, b) => a.localeCompare(b, "fr")),
       sources: [...sources].sort(),
       contractCounts,
       hasVie: contractCounts.vie > 0,
+      closed,
     },
   };
 }
 
 function getOffresCache(): OffresCache {
+  syncDuplicates();
   const fingerprint = dbFingerprint();
   if (!offresCache || offresCache.fingerprint !== fingerprint) {
     offresCache = buildOffresCache(fingerprint);
   } else if (Date.now() - offresCache.orderedAt > ORDER_TTL_MS) {
     // Seul l’ordre bouge avec l’heure : on relit les identifiants triés, pas les lignes.
     const cache = offresCache;
-    const ids = getDb().prepare(`SELECT o.id FROM offres o ORDER BY ${SMART_ORDER}`).all() as { id: number }[];
+    const ids = getDb().prepare(`SELECT o.id FROM ${LIST_FROM} ORDER BY ${LIST_ORDER}`).all() as { id: number }[];
     cache.smart = ids.map(({ id }) => cache.byId.get(id)).filter((offer): offer is CachedOffre => !!offer);
     cache.orderedAt = Date.now();
   }
@@ -227,11 +260,15 @@ function getOffresCache(): OffresCache {
 function getHaystacks(cache: OffresCache): Map<number, string> {
   if (cache.haystacks) return cache.haystacks;
   const rows = getDb().prepare(
-    "SELECT id, title, company, country, location, description_text FROM offres"
-  ).all() as Pick<OffreRow, "id" | "title" | "company" | "country" | "location" | "description_text">[];
+    "SELECT id, duplicate_of, title, company, country, location, description_text FROM offres"
+  ).all() as Pick<OffreRow, "id" | "duplicate_of" | "title" | "company" | "country" | "location" | "description_text">[];
   const haystacks = new Map<number, string>();
   for (const row of rows) {
-    haystacks.set(row.id, normalizeSearch([row.title, row.company, row.country, row.location, row.description_text].filter(Boolean).join(" ")));
+    // Un doublon prête son lieu et son texte à l'offre de son groupe : chercher
+    // « Lyon » trouve le groupe même si l'offre affichée est à Rouen.
+    const key = row.duplicate_of ?? row.id;
+    const text = normalizeSearch([row.title, row.company, row.country, row.location, row.description_text].filter(Boolean).join(" "));
+    haystacks.set(key, haystacks.has(key) ? `${haystacks.get(key)} ${text}` : text);
   }
   cache.haystacks = haystacks;
   return haystacks;
@@ -258,6 +295,8 @@ export function searchOffres(opts: {
   minScore?: boolean | number;
   /** Raccourci de ?vie=1 : même règle que la puce contrat « V.I.E » (contract_category). */
   vieOnly?: boolean;
+  /** Montrer aussi les offres retirées par leur source (en fin de liste). */
+  includeClosed?: boolean;
   sortBy?: OffersSort;
   page?: number;
 } = {}): OffersSearch {
@@ -267,8 +306,9 @@ export function searchOffres(opts: {
   const contracts = new Set(opts.contracts ?? []);
   const minScore = opts.minScore === true ? 60 : typeof opts.minScore === "number" ? opts.minScore : 0;
   const filtered = cache.smart.filter((row) => {
+    if (row.closed_at && !opts.includeClosed) return false;
     if (haystacks && !(haystacks.get(row.id) ?? "").includes(query)) return false;
-    if (opts.source && row.source !== opts.source) return false;
+    if (opts.source && row.source !== opts.source && !row.variants.some((v) => v.source === opts.source)) return false;
     if (opts.country && row.country !== opts.country) return false;
     if (contracts.size && !contracts.has(row.contract_category)) return false;
     if (minScore > 0 && (row.score ?? 0) < minScore) return false;
@@ -277,13 +317,15 @@ export function searchOffres(opts: {
   });
 
   // Tris stables : les ex æquo gardent l’ordre intelligent, lui-même départagé par id.
-  // Un 👎 reste en fin de liste quel que soit le tri par score.
+  // Une offre retirée reste en fin de liste quel que soit le tri, un 👎 quel que soit le tri par score.
+  const closed = (o: CachedOffre) => Number(!!o.closed_at);
   const down = (o: CachedOffre) => Number(o.feedback?.verdict === "down");
-  if (opts.sortBy === "score") filtered.sort((a, b) => down(a) - down(b) || (b.score ?? 0) - (a.score ?? 0));
-  if (opts.sortBy === "newest") filtered.sort((a, b) => compareText(b.posted_at ?? "", a.posted_at ?? ""));
+  if (opts.sortBy === "score") filtered.sort((a, b) => closed(a) - closed(b) || down(a) - down(b) || (b.score ?? 0) - (a.score ?? 0));
+  if (opts.sortBy === "newest") filtered.sort((a, b) => closed(a) - closed(b) || compareText(b.posted_at ?? "", a.posted_at ?? ""));
   if (opts.sortBy === "oldest") {
     // Dates inconnues en fin de liste, comme en 3.4.10.
     filtered.sort((a, b) => {
+      if (closed(a) !== closed(b)) return closed(a) - closed(b);
       if (!a.posted_at || !b.posted_at) return Number(!a.posted_at) - Number(!b.posted_at);
       return compareText(a.posted_at, b.posted_at);
     });
@@ -300,6 +342,8 @@ export function searchOffres(opts: {
       score_reason: parseJson<{ reason?: string } | null>(row.score_breakdown, null)?.reason ?? null,
       contract_category: row.contract_category,
       has_cv: row.has_cv, has_lm: row.has_lm,
+      first_seen_at: row.first_seen_at, closed_at: row.closed_at,
+      variants: row.variants,
       feedback: row.feedback,
       quality_issues: row.quality_issues,
     })),
@@ -311,11 +355,13 @@ export function searchOffres(opts: {
 
 /** Les six premières suggestions suffisent au tableau de bord. */
 export function suggestedOffres(limit: number, untracked = false): Pick<OffreRow, "id" | "title" | "company" | "country" | "location" | "posted_at" | "score">[] {
+  syncDuplicates();
   return getDb().prepare(`
     SELECT o.id, o.title, o.company, o.country, o.location, o.posted_at, o.score
     FROM offres o
-    -- Une offre jugée « pas pour moi » n'est jamais suggérée.
+    -- Une offre jugée « pas pour moi », retirée par sa source ou en double n'est jamais suggérée.
     WHERE NOT EXISTS(SELECT 1 FROM offre_feedback f WHERE f.offre_id = o.id AND f.verdict = 'down')
+    AND ${VISIBLE_SQL}
     ${untracked ? "AND NOT EXISTS(SELECT 1 FROM candidatures c WHERE c.offre_id = o.id)" : ""}
     ORDER BY ${SMART_ORDER} LIMIT ?
   `).all(Math.max(1, Math.min(20, Math.trunc(limit)))) as Pick<OffreRow, "id" | "title" | "company" | "country" | "location" | "posted_at" | "score">[];
@@ -341,9 +387,11 @@ export function upsertOffreFromSource(source: string, o: ScrapedOffre): number {
   const db = getDb();
   const stmt = db.prepare(`
     INSERT INTO offres (source, source_id, url, title, company, country, location, contract_type, salary,
-      description_html, description_text, description_status, posted_at, is_vie, raw_payload, scrape_errors, quality_issues)
+      description_html, description_text, description_status, posted_at, is_vie, raw_payload, scrape_errors, quality_issues,
+      first_seen_at, checked_at)
     VALUES (@source, @source_id, @url, @title, @company, @country, @location, @contract_type, @salary,
-      @description_html, @description_text, @description_status, @posted_at, @is_vie, @raw_payload, @scrape_errors, @quality_issues)
+      @description_html, @description_text, @description_status, @posted_at, @is_vie, @raw_payload, @scrape_errors, @quality_issues,
+      datetime('now'), datetime('now'))
     ON CONFLICT(source, source_id) DO UPDATE SET
       url = excluded.url,
       title = excluded.title,
@@ -360,7 +408,10 @@ export function upsertOffreFromSource(source: string, o: ScrapedOffre): number {
       raw_payload = excluded.raw_payload,
       scrape_errors = excluded.scrape_errors,
       quality_issues = excluded.quality_issues,
-      scraped_at = datetime('now')
+      scraped_at = datetime('now'),
+      -- La source vient de la renvoyer : elle est en ligne.
+      closed_at = NULL,
+      checked_at = datetime('now')
   `);
   stmt.run({
     source,
@@ -486,15 +537,16 @@ export function getOffre(id: number): OffreFiltered | null {
 }
 
 export function offresCounts() {
+  syncDuplicates();
   const db = getDb();
-  const total = (db.prepare("SELECT COUNT(*) as c FROM offres").get() as { c: number }).c;
+  const total = (db.prepare(`SELECT COUNT(*) as c FROM offres WHERE ${VISIBLE_SQL}`).get() as { c: number }).c;
   const today = (
-    db.prepare("SELECT COUNT(*) as c FROM offres WHERE date(posted_at) = date('now')").get() as {
+    db.prepare(`SELECT COUNT(*) as c FROM offres WHERE date(posted_at) = date('now') AND ${VISIBLE_SQL}`).get() as {
       c: number;
     }
   ).c;
   // Colonne is_vie figée au scan : pour un chiffre qui corresponde à /offres?vie=1,
   // lire searchOffres().facets.contractCounts.vie (page /offres) ou vieFigure() (accueil).
-  const vie = (db.prepare("SELECT COUNT(*) as c FROM offres WHERE is_vie = 1").get() as { c: number }).c;
+  const vie = (db.prepare(`SELECT COUNT(*) as c FROM offres WHERE is_vie = 1 AND ${VISIBLE_SQL}`).get() as { c: number }).c;
   return { total, today, vie };
 }

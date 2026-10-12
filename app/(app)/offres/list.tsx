@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, ArrowUpRight, Briefcase, CalendarDays, ChevronDown, MapPin, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
 import { Chip } from "@/components/ui/chip";
 import { Badge } from "@/components/ui/badge";
-import { cn, formatRelativeDate, scoreColor } from "@/lib/utils";
+import { cn, formatRelativeDate, fromSqliteUtc, scoreColor } from "@/lib/utils";
 import type { OffreSummary, OffersSearch, OffersSort } from "@/lib/db/offres";
 import { CONTRACT_LABELS, CONTRACT_ORDER, type ContractCategory } from "@/lib/contracts";
 import { SOURCES_META } from "@/lib/sources-meta";
@@ -52,6 +52,8 @@ export function OffresList({
   const scoreThreshold = initialMinScore || DEFAULT_MIN_SCORE;
   const [minScore, setMinScore] = useState(initialMinScore > 0);
   const [sortBy, setSortBy] = useState<OffersSort>("smart");
+  // Offres retirées par leur source : masquées, sauf demande (en fin de liste).
+  const [showClosed, setShowClosed] = useState(false);
   const [result, setResult] = useState(initialResult);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -119,9 +121,9 @@ export function OffresList({
     if (initialRef.current === initialResult) return;
     initialRef.current = initialResult;
     setPage(1);
-    if (hasFilters || sortBy !== "smart") setRefreshKey((key) => key + 1);
+    if (hasFilters || sortBy !== "smart" || showClosed) setRefreshKey((key) => key + 1);
     else setResult(initialResult);
-  }, [initialResult, hasFilters, sortBy]);
+  }, [initialResult, hasFilters, sortBy, showClosed]);
 
   useEffect(() => {
     if (firstRequest.current) { firstRequest.current = false; return; }
@@ -132,6 +134,7 @@ export function OffresList({
     if (country) params.set("country", country);
     if (contractKey) params.set("contracts", contractKey);
     if (minScore) params.set("minScore", String(scoreThreshold));
+    if (showClosed) params.set("closed", "1");
     setLoading(true);
     setError(false);
     const timer = window.setTimeout(async () => {
@@ -152,7 +155,7 @@ export function OffresList({
       }
     }, page > 1 ? 0 : query ? 250 : 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [query, source, country, contractKey, minScore, scoreThreshold, sortBy, page, refreshKey]);
+  }, [query, source, country, contractKey, minScore, scoreThreshold, sortBy, showClosed, page, refreshKey]);
 
   function reset() {
     setQuery(""); setSource(""); setCountry(""); setContracts(new Set()); setMinScore(false); setSelectedId(null); setFiltersExpanded(false); setPage(1);
@@ -221,6 +224,7 @@ export function OffresList({
         <div>
           <h2 className="font-display text-h2">{hasFilters ? "Résultats de la recherche" : "Toutes les offres"}</h2>
           <p className="mt-1 text-small text-textSecondary" aria-live="polite">{resultLabel(result.total, hasFilters)}</p>
+          <ClosedToggle count={result.facets.closed} shown={showClosed} onToggle={() => { setShowClosed(!showClosed); setPage(1); }} />
         </div>
         {result.total > result.pageSize && <span className="text-small text-textSecondary">{numberFormat.format(shown.length)} affichée{shown.length > 1 ? "s" : ""}</span>}
       </div>
@@ -278,10 +282,12 @@ function OfferRowContent({ offer }: { offer: OffreSummary }) {
       </span>
       <span className="min-w-0 flex-1">
         <span className="block font-medium leading-snug group-hover:text-accent">{offer.title}</span>
-        <span className="mt-1 block text-small text-textSecondary">{offer.company || "Entreprise non précisée"} · {offer.location || offer.country || "Lieu non précisé"}</span>
+        <span className="mt-1 block text-small text-textSecondary">{offer.company || "Entreprise non précisée"} · {placesLabel(offer)}</span>
         <span className="mt-3 flex flex-wrap items-center gap-1.5">
-          {offer.posted_at && <span className="mr-1 text-caption text-textSecondary">{formatRelativeDate(offer.posted_at)}</span>}
+          <OfferDate offer={offer} />
           <Badge>{sourceLabels[offer.source] ?? offer.source}</Badge>
+          {otherSources(offer).length > 0 && <Badge>Aussi sur {otherSources(offer).join(", ")}</Badge>}
+          {offer.closed_at && <Badge variant="warning">Retirée par la source</Badge>}
           {offer.contract_category !== "autre" && <Badge variant={offer.contract_category === "vie" ? "info" : "default"}>{CONTRACT_LABELS[offer.contract_category]}</Badge>}
           {(offer.has_cv || offer.has_lm) && <Badge variant="success">Dossier prêt</Badge>}
           {offer.description_status === "failed" && <Badge variant="warning">{isWrongDescription(offer.quality_issues) ? "Description erronée" : "Annonce partielle"}</Badge>}
@@ -321,10 +327,15 @@ function OfferPreview({ offer }: { offer: OffreSummary }) {
         </span>
       </div>
       <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 border-b border-border pb-5 text-small text-textSecondary">
-        {(offer.location || offer.country) && <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {offer.location || offer.country}</span>}
-        {offer.posted_at && <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" /> {formatRelativeDate(offer.posted_at)}</span>}
+        {(offer.location || offer.country) && <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {placesLabel(offer)}</span>}
+        {(offer.posted_at || offer.first_seen_at) && <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" /> <OfferDate offer={offer} plain /></span>}
         {offer.contract_category !== "autre" && <span>{CONTRACT_LABELS[offer.contract_category]}</span>}
       </div>
+      {offer.closed_at && (
+        <p className="mt-5 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-small">
+          <span className="font-semibold">Retirée par la source</span> — l&apos;annonce n&apos;est plus en ligne : le poste est sans doute pourvu.
+        </p>
+      )}
       <div className="py-5">
         <p className="text-small font-semibold">Pourquoi cette offre ?</p>
         <p className="mt-1 line-clamp-3 text-small leading-relaxed text-textSecondary">{offer.score_reason || `Score ${score.label.toLowerCase()} pour votre profil.`}</p>
@@ -341,6 +352,46 @@ function OfferPreview({ offer }: { offer: OffreSummary }) {
         <a href={offer.url} target="_blank" rel="noopener noreferrer" className="flex h-10 items-center justify-center gap-2 text-small font-semibold text-accent hover:underline">Annonce d’origine <ArrowUpRight className="h-4 w-4" /></a>
       </div>
     </aside>
+  );
+}
+
+/** « Lyon », ou « Lyon et 2 autres lieux » quand la même offre est publiée ailleurs. */
+function placesLabel(offer: OffreSummary): string {
+  const first = offer.location || offer.country || "Lieu non précisé";
+  const key = (s: string) => s.trim().toLowerCase();
+  const others = new Set(
+    offer.variants.map((v) => v.location).filter((l): l is string => !!l && key(l) !== key(offer.location ?? ""))
+      .map(key)
+  );
+  if (!others.size) return first;
+  return `${first} et ${others.size} autre${others.size > 1 ? "s" : ""} lieu${others.size > 1 ? "x" : ""}`;
+}
+
+/** Sources où la même offre est aussi publiée. */
+function otherSources(offer: OffreSummary): string[] {
+  return [...new Set(offer.variants.map((v) => v.source).filter((s) => s !== offer.source))].map((s) => sourceLabels[s] ?? s);
+}
+
+/** Date de publication, ou à défaut date de première collecte. */
+function OfferDate({ offer, plain = false }: { offer: OffreSummary; plain?: boolean }) {
+  const text = offer.posted_at
+    ? formatRelativeDate(offer.posted_at)
+    : offer.first_seen_at
+    ? `repérée ${formatRelativeDate(fromSqliteUtc(offer.first_seen_at))}`
+    : null;
+  if (!text) return null;
+  if (plain) return <>{text}</>;
+  return <span className="mr-1 text-caption text-textSecondary" title={offer.posted_at ? undefined : "Date de publication inconnue : date à laquelle JobScout l'a trouvée"}>{text}</span>;
+}
+
+/** Offres retirées par leur source : masquées par défaut, affichables en fin de liste. */
+function ClosedToggle({ count, shown, onToggle }: { count: number; shown: boolean; onToggle: () => void }) {
+  if (!count) return null;
+  return (
+    <p className="mt-1 text-small text-textSecondary">
+      {numberFormat.format(count)} offre{count > 1 ? "s" : ""} retirée{count > 1 ? "s" : ""} par leur source {shown ? "en fin de liste" : `masquée${count > 1 ? "s" : ""}`} ·{" "}
+      <button type="button" onClick={onToggle} className="font-semibold text-accent hover:underline">{shown ? "Les masquer" : "Les afficher"}</button>
+    </p>
   );
 }
 

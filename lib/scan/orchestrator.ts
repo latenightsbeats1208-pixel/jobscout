@@ -7,19 +7,34 @@ import { loadCorpus, rescoreAllOffres } from "@/lib/scoring/rescore";
 import { buildSearchPlan } from "./search-plan";
 import { assessQuality, summarizeIssues, type QualityIssue } from "@/lib/scrapers/quality";
 import { countIssues, recheckStoredQuality } from "@/lib/scrapers/quality-store";
+import { checkStoredLiveness } from "@/lib/scrapers/liveness-store";
+import { refreshDuplicates } from "@/lib/db/duplicates";
 import { searchAreaLabel } from "@/lib/geo/fr";
 import { getProfile } from "@/lib/db/queries";
 import { getDb } from "@/lib/db";
 import type { ProgressEvent } from "@/lib/scrapers/base";
 
+/**
+ * « partial » : au moins une source en échec (ou une étape de fin de scan) ;
+ * « failed » : aucune source n'a rien rapporté. Un scan ne se dit « terminé »
+ * que si toutes ses sources ont répondu.
+ */
+export type ScanStatus = "done" | "partial" | "failed";
+export type ScanFailure = { source: string; message: string };
+
 export type OrchestratorEvent =
   | ProgressEvent
   | { kind: "scored"; offre_id: number; score: number }
   | { kind: "error"; source: string; message: string }
-  | { kind: "global-done"; total_inserted: number };
+  | { kind: "global-done"; total_inserted: number; status: ScanStatus; failures: ScanFailure[] };
 
 // Local scorer is fast — no need to batch heavily, but we keep batching for predictable yields.
 const SCORE_BATCH = 20;
+/**
+ * Offres déjà en base que le scan n'a pas revues, vérifiées en fin de scan :
+ * les mieux notées d'abord, au plus ce nombre (une requête chacune, sauf WTTJ).
+ */
+const LIVENESS_PER_SCAN = 40;
 
 export async function* runScan(
   onLog: (line: string) => void,
@@ -56,17 +71,25 @@ export async function* runScan(
   const db = getDb();
   const runRes = db.prepare("INSERT INTO scan_runs (status) VALUES ('running')").run();
   const runId = Number(runRes.lastInsertRowid);
+  // Même horloge que scraped_at : une offre revue par ce scan a une date ≥ celle-ci.
+  const { startedAt } = db.prepare("SELECT started_at AS startedAt FROM scan_runs WHERE id = ?").get(runId) as { startedAt: string };
   const log: string[] = [];
+  const say = (line: string) => {
+    log.push(line);
+    onLog(line);
+  };
   const flush = () =>
     db.prepare("UPDATE scan_runs SET log = ? WHERE id = ?").run(JSON.stringify(log), runId);
+  // Sources en échec, et étapes de fin de scan en échec (le scan est alors partiel).
+  const failures: ScanFailure[] = [];
+  let failedSources = 0;
 
   // Ce que chaque source va chercher, annoncé avant de commencer.
   const plan = buildSearchPlan(profile);
   const planLine = `Recherche : ${plan.queries.length ? plan.queries.map((q) => `« ${q} »`).join(", ") : "toutes les offres"}${
     plan.origin === "experiences" ? " (intitulés de vos expériences, faute de poste visé)" : plan.origin === "secteurs" ? " (vos secteurs, faute de poste visé)" : ""
   } — zone : ${plan.area ? searchAreaLabel(plan.area) : "tout le pays"}`;
-  log.push(planLine);
-  onLog(planLine);
+  say(planLine);
 
   let totalInserted = 0;
 
@@ -77,6 +100,7 @@ export async function* runScan(
     const buffer: { id: number; offre: any }[] = [];
     const pendingScoring: OrchestratorEvent[] = [];
     const issues: QualityIssue[][] = [];
+    let fatal: string | null = null;
 
     try {
       const criteria = { queries: plan.queries, sectors: profile.sectors, countries: profile.target_countries, area: plan.area };
@@ -129,22 +153,25 @@ export async function* runScan(
         while (pendingScoring.length) yield pendingScoring.shift()!;
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      onLog(`[${scraper.name}] erreur fatale: ${msg}`);
-      // Persisté dans scan_runs.log : sans cela, une source qui plante dès le
-      // départ (moteur absent, API HS) laissait « 0 vues, 0 échecs » sans cause.
-      log.push(`[${scraper.name}] erreur fatale: ${msg}`);
-      yield { kind: "error", source: scraper.name, message: msg };
+      fatal = e instanceof Error ? e.message : String(e);
+      yield { kind: "error", source: scraper.name, message: fatal };
     }
-    const summary = `[${scraper.name}] ${seen || okCount + failCount} vues, ${okCount} insérées, ${failCount} échecs`;
-    log.push(summary);
-    onLog(summary);
+    const views = seen || okCount + failCount;
+    // Le bilan dit la cause : sans elle, une source qui plante dès le départ
+    // (moteur absent, API HS) laissait « 0 vues, 0 échecs » et un scan « terminé ».
+    if (fatal) {
+      say(views ? `[${scraper.name}] interrompue après ${views} vues, ${okCount} insérées : ${fatal}` : `[${scraper.name}] échec : ${fatal}`);
+    } else {
+      say(`[${scraper.name}] ${views} vues, ${okCount} insérées, ${failCount} échecs`);
+    }
+    // Rien d'exploitable alors que la source répondait : elle a échoué aussi.
+    const empty = !fatal && okCount === 0 && failCount > 0;
+    if (fatal || empty) {
+      failures.push({ source: scraper.name, message: fatal ?? "aucune offre exploitable" });
+      if (okCount === 0) failedSources++;
+    }
     const quality = summarizeIssues(countIssues(issues));
-    if (quality) {
-      const line = `[${scraper.name}] contrôle qualité : ${quality}`;
-      log.push(line);
-      onLog(line);
-    }
+    if (quality) say(`[${scraper.name}] contrôle qualité : ${quality}`);
     flush();
   }
 
@@ -155,11 +182,53 @@ export async function* runScan(
     recheckStoredQuality();
     rescoreAllOffres(profile);
   } catch (e) {
-    yield { kind: "error", source: "scoring", message: e instanceof Error ? e.message : String(e) };
+    const message = e instanceof Error ? e.message : String(e);
+    failures.push({ source: "notation", message });
+    yield { kind: "error", source: "scoring", message };
   }
 
-  db.prepare("UPDATE scan_runs SET status = 'done', finished_at = datetime('now') WHERE id = ?").run(runId);
-  yield { kind: "global-done", total_inserted: totalInserted };
+  // Une offre retirée par sa source ne réapparaît simplement plus dans ses
+  // résultats — ce qui arrive aussi à une offre toujours en ligne, poussée hors
+  // du quota par de plus récentes. On le vérifie donc offre par offre.
+  try {
+    const live = await checkStoredLiveness({ notSeenSince: startedAt, limit: LIVENESS_PER_SCAN });
+    if (live.checked) {
+      say(
+        `Offres déjà en base vérifiées : ${live.checked}, dont ${live.closed} retirée${live.closed > 1 ? "s" : ""} par leur source` +
+          (live.reopened ? `, ${live.reopened} de nouveau en ligne` : "")
+      );
+    }
+    for (const source of live.suspicious) {
+      say(`[${source}] toutes les offres vérifiées paraissaient retirées : résultat ignoré (le site a peut-être changé)`);
+    }
+  } catch (e) {
+    say(`Vérification des offres retirées impossible : ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  // Après les notes et la vérification : l'offre qui représente chaque groupe
+  // de doublons dépend des deux.
+  try {
+    const { hidden } = refreshDuplicates();
+    if (hidden) say(`Doublons regroupés : ${hidden} offre${hidden > 1 ? "s" : ""} publiée${hidden > 1 ? "s" : ""} aussi ailleurs (autre lieu ou autre source)`);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    failures.push({ source: "regroupement des doublons", message });
+    yield { kind: "error", source: "doublons", message };
+  }
+
+  const status: ScanStatus =
+    failedSources >= scrapers.length ? "failed" : failures.length ? "partial" : "done";
+  if (status !== "done") {
+    const names = failures.map((f) => sourceLabel(f.source)).join(", ");
+    say(status === "failed" ? `Scan en échec : aucune source n'a répondu (${names}).` : `Scan partiel : ${names} en échec.`);
+  }
+  flush();
+  db.prepare("UPDATE scan_runs SET status = ?, summary = ?, finished_at = datetime('now') WHERE id = ?").run(
+    status,
+    JSON.stringify({ failures, inserted: totalInserted }),
+    runId
+  );
+  yield { kind: "global-done", total_inserted: totalInserted, status, failures };
 }
 
 async function scoreBatch(

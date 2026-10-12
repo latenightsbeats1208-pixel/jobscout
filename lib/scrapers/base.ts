@@ -59,7 +59,13 @@ export async function getBrowser(): Promise<Browser> {
   applyBrowsersPath();
   if (!isEngineInstalled()) throw new Error(ENGINE_MISSING_MESSAGE);
   const { chromium } = await import("playwright");
-  _browser = await chromium.launch({ headless: true });
+  try {
+    _browser = await chromium.launch({ headless: true });
+  } catch (e) {
+    // Moteur d'une autre version de Playwright : même remède qu'un moteur absent.
+    if (e instanceof Error && /Executable doesn't exist/i.test(e.message)) throw new Error(ENGINE_MISSING_MESSAGE);
+    throw e;
+  }
   return _browser;
 }
 

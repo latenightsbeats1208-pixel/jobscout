@@ -20,6 +20,14 @@ const ALGOLIA_APP_ID = process.env.WTTJ_ALGOLIA_APP || "CSEKHVMS53";
 const ALGOLIA_API_KEY = process.env.WTTJ_ALGOLIA_KEY || "4bd8f6215d0cc52b26430765769e65a0";
 const INDEX = "wttj_jobs_production_fr";
 const SITE = "https://www.welcometothejungle.com";
+/** Pour vérifier qu'une offre est toujours publiée (lib/scrapers/liveness.ts). */
+export const WTTJ_ALGOLIA = {
+  objectsUrl: ALGOLIA_URL.replace(/\/queries$/, "/objects"),
+  appId: ALGOLIA_APP_ID,
+  apiKey: ALGOLIA_API_KEY,
+  index: INDEX,
+  site: SITE,
+};
 const HITS_PER_PAGE = 50;
 const PAGES_PER_QUERY = 2;
 

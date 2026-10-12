@@ -51,6 +51,31 @@ const RESULTS_PAGE_MARKERS = [
 const norm = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/’/g, "'").replace(/\s+/g, " ");
 
+const DEPARTEMENT_CODE = /^(?:\d{2,3}|2[AB])$/i;
+
+const MOIS = ["janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aout", "septembre", "octobre", "novembre", "decembre"];
+
+/** « 24 septembre 2026 », « 1er octobre 2026 » → « 2026-09-24 » ; null si illisible. */
+export function parseFrenchDate(raw: string | null | undefined): string | null {
+  const m = norm(raw ?? "").match(/(\d{1,2})(?:er)?\s+([a-z]+)\s+(\d{4})/);
+  if (!m) return null;
+  const month = MOIS.indexOf(m[2]) + 1;
+  const day = Number(m[1]);
+  if (!month || day < 1 || day > 31) return null;
+  return `${m[3]}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/**
+ * « Publié il y a 3 jours », « Publié hier », « Publié aujourd'hui » (carte de
+ * la liste) → date ISO ; null pour « plus de 30 jours » ou un texte inconnu.
+ */
+export function parsePublishedAgo(raw: string | null | undefined, now = new Date()): string | null {
+  const t = norm(raw ?? "");
+  const days = /aujourd'hui/.test(t) ? 0 : /\bhier\b/.test(t) ? 1 : /plus de/.test(t) ? null : Number(t.match(/il y a (\d+) jours?/)?.[1] ?? NaN);
+  if (days === null || Number.isNaN(days)) return null;
+  return new Date(now.getTime() - days * 86_400_000).toISOString().slice(0, 10);
+}
+
 let cachedToken: { token: string; expires: number } | null = null;
 
 async function getToken(): Promise<string | null> {
@@ -163,6 +188,7 @@ type HtmlCard = {
   city: string | null;
   contract: string | null;
   snippet: string;
+  posted_at: string | null;
 };
 
 function parseHtmlSearch(html: string): HtmlCard[] {
@@ -183,6 +209,8 @@ function parseHtmlSearch(html: string): HtmlCard[] {
       .trim();
     if (sub) {
       const parts = sub.split(/\s+-\s+/).map((p) => p.trim()).filter(Boolean);
+      // Offre anonyme : « 26 - Romans-sur-Isère », sans entreprise devant le département.
+      if (parts.length && DEPARTEMENT_CODE.test(parts[0])) parts.unshift("");
       company = parts[0] ?? "";
       city = parts.length >= 3 ? parts[2] : parts[1] ?? null;
       // Si le "lieu" n'est qu'un code département (2-3 chiffres), on le garde comme ville seulement s'il n'y a rien de mieux
@@ -193,12 +221,14 @@ function parseHtmlSearch(html: string): HtmlCard[] {
     const contract = dd ? dd.split(" - ")[0].trim() : null;
 
     const snippet = Array.from(li.querySelectorAll("p"))
-      .filter((p) => !(p.getAttribute("class") ?? "").includes("subtext"))
+      .filter((p) => !/subtext|date|contrat/.test(p.getAttribute("class") ?? ""))
       .map((p) => p.textContent?.trim() ?? "")
       .filter((t) => t.length > 20)
       .join(" ");
 
-    out.push({ id, title, company, city, contract, snippet });
+    const posted_at = parsePublishedAgo(li.querySelector("p.date")?.textContent);
+
+    out.push({ id, title, company, city, contract, snippet, posted_at });
   }
   return out;
 }
@@ -218,13 +248,15 @@ async function fetchHtmlPage(keywords: string, page: number, area?: SearchArea |
 
 // Description lue pour une offre, ou motif de rejet quand la réponse décrit
 // autre chose que l'offre demandée (offre voisine, page de résultats).
-type Detail = { html: string; text: string; salary: string | null } | { rejected: string };
+type Detail = { html: string; text: string; salary: string | null; posted_at?: string | null } | { rejected: string };
 
 type FtDescriptif = {
   numeroOffre?: string | null;
   descriptif?: string | null;
   salaire?: string | null;
   listeCompetence?: { libelleCompetence?: string | null }[] | null;
+  /** « 24 septembre 2026 » : la date « Actualisé le » du site. */
+  dateDerniereModification?: string | null;
 };
 
 async function fetchDescriptif(id: string): Promise<Detail | null> {
@@ -245,7 +277,12 @@ async function fetchDescriptif(id: string): Promise<Detail | null> {
       .filter(Boolean)
       .join(", ");
     const text = skills ? `${descriptif}\n\nCompétences : ${skills}` : descriptif;
-    return { html: textToHtml(text), text, salary: data.salaire?.trim() || null };
+    return {
+      html: textToHtml(text),
+      text,
+      salary: data.salaire?.trim() || null,
+      posted_at: parseFrenchDate(data.dateDerniereModification),
+    };
   } catch {
     return null;
   }
@@ -308,7 +345,8 @@ async function enrichCard(card: HtmlCard): Promise<ScrapedOffre> {
     description_html,
     description_text,
     description_status: okStatus ? "ok" : "failed",
-    posted_at: null,
+    // Date de publication de la carte, sinon date d'actualisation du JSON.
+    posted_at: card.posted_at ?? own?.posted_at ?? null,
     is_vie: detectVie({ source: SOURCE, title: card.title, description: description_text, url }),
     raw_payload: { id: card.id },
     scrape_errors: okStatus ? undefined : rejected ?? "description introuvable",

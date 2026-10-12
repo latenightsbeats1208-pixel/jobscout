@@ -13,8 +13,15 @@ type SourceProgress = {
   done: number;
   ok: number;
   failed: number;
-  status: "running" | "done";
+  /** « failed » : la source n'a pas répondu (moteur absent, site indisponible…). */
+  status: "running" | "done" | "failed";
+  error?: string;
 };
+
+/** Bilan envoyé par le serveur en fin de scan (lib/scan/orchestrator.ts). */
+type ScanOutcome = { status: "done" | "partial" | "failed"; failures: { source: string; message: string }[] };
+
+const SCAN_SOURCES = new Set(SOURCES_META.map((s) => s.id));
 
 type ScanTarget = "all" | string;
 
@@ -46,6 +53,7 @@ export function ScanButton() {
   const [target, setTarget] = useState<ScanTarget>("all");
   const [logs, setLogs] = useState<string[]>([]);
   const [sources, setSources] = useState<Record<string, SourceProgress>>({});
+  const [outcome, setOutcome] = useState<ScanOutcome | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -118,6 +126,7 @@ export function ScanButton() {
     setHasError(false);
     setLogs([]);
     setSources({});
+    setOutcome(null);
     const url = t === "all" ? "/api/scan/start" : `/api/scan/start?source=${t}`;
     const es = new EventSource(url);
     esRef.current = es;
@@ -170,9 +179,22 @@ export function ScanButton() {
       setSources((s) => ({ ...s, [e.source]: { ...s[e.source], status: "done" } }));
       return;
     }
+    if (e.kind === "global-done") {
+      setOutcome({ status: e.status, failures: e.failures ?? [] });
+      return;
+    }
     if (e.kind === "error") {
       setHasError(true);
-      setLogs((l) => [...l, `[${e.source}] ${e.message}`]);
+      // Une source en échec s'affiche sur sa ligne (le journal en donne le bilan) ;
+      // les autres erreurs (notation, serveur) vont au journal.
+      if (SCAN_SOURCES.has(e.source)) {
+        setSources((s) => ({
+          ...s,
+          [e.source]: { ...(s[e.source] ?? { total: 0, done: 0, ok: 0, failed: 0 }), status: "failed", error: e.message },
+        }));
+      } else {
+        setLogs((l) => [...l, `[${e.source}] ${e.message}`]);
+      }
     }
   }
 
@@ -248,9 +270,13 @@ export function ScanButton() {
               <div className="mb-4 flex items-start justify-between gap-4">
                 <div>
                   <h2 id={titleId} className="text-h3">{targetLabel}</h2>
-                  <p role="status" aria-live="polite" className="text-small text-textSecondary">
+                  <p role="status" aria-live="polite" className={cn("text-small", !running && outcome && outcome.status !== "done" ? "font-medium text-danger" : "text-textSecondary")}>
                     {running
                       ? "Recherche en cours. Gardez cette page ouverte : la quitter interromprait le scan."
+                      : outcome?.status === "failed"
+                      ? "Scan en échec : aucune source n'a répondu"
+                      : outcome?.status === "partial"
+                      ? `Scan partiel : ${outcome.failures.map((f) => sourceLabel(f.source)).join(", ")} en échec`
                       : hasError
                       ? "Terminé avec des alertes"
                       : "Recherche terminée"}
@@ -269,18 +295,25 @@ export function ScanButton() {
               <div className="mb-4 space-y-3">
                 {Object.entries(sources).map(([name, p]) => (
                   <div key={name}>
-                    <div className="mb-1 flex items-center justify-between text-small">
+                    <div className="mb-1 flex items-center justify-between gap-3 text-small">
                       <span className="font-medium">{sourceLabel(name)}</span>
-                      <span className="text-textSecondary">
-                        {p.done}/{p.total} {p.failed > 0 && `· ${p.failed} échec${p.failed > 1 ? "s" : ""}`}
-                      </span>
+                      {p.status === "failed" ? (
+                        <span className="shrink-0 font-medium text-danger">
+                          {p.done > 0 ? `interrompue à ${p.done}/${p.total}` : "en échec"}
+                        </span>
+                      ) : (
+                        <span className="text-textSecondary">
+                          {p.done}/{p.total} {p.failed > 0 && `· ${p.failed} échec${p.failed > 1 ? "s" : ""}`}
+                        </span>
+                      )}
                     </div>
                     <div className="h-1.5 overflow-hidden rounded-full bg-surface">
                       <div
-                        className="h-full bg-accent transition-all duration-300"
-                        style={{ width: `${p.total ? (p.done / p.total) * 100 : 0}%` }}
+                        className={cn("h-full transition-all duration-300", p.status === "failed" ? "bg-danger" : "bg-accent")}
+                        style={{ width: `${p.status === "failed" && !p.done ? 100 : p.total ? (p.done / p.total) * 100 : 0}%` }}
                       />
                     </div>
+                    {p.error && <p className="mt-1 text-caption text-textSecondary">{p.error}</p>}
                   </div>
                 ))}
                 {!Object.keys(sources).length && running && (
