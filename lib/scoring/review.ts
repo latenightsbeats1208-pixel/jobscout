@@ -12,7 +12,7 @@ import type { ProfileFull } from "@/lib/cv/types";
  */
 
 /** À changer à chaque modification du prompt ou du barème : les relectures antérieures sont alors refaites. */
-export const REVIEW_VERSION = "review-v4";
+export const REVIEW_VERSION = "review-v5";
 
 export type Coverage = "oui" | "partiel" | "non";
 export type Verdict = "postuler" | "a_tenter" | "hors_profil";
@@ -182,21 +182,23 @@ export function parseReview(
 
 /**
  * Ce que la relecture fait de la note : la note locale reste, le verdict la
- * réduit. Mesuré en octobre 2026 avec de vraies relectures (Gemini) : remplacer
- * la note locale par celle de l'IA, avec un filtre « compétences indispensables
- * absentes », faisait passer le NDCG@20 de 80 % à 69 % sur l'ancien banc et de
- * 87 % à 83 % sur le banc marché (16 profils). Deux causes : presque toutes les
- * bonnes offres sortaient à 100, ex æquo, et ni le contrat, ni la zone, ni
- * l'intitulé ne départageaient plus ; et le modèle déclare « indispensable » un
- * détail de l'annonce (« Spotfire », « HTML et CSS », « conduite de nacelle ») —
- * 20 offres jugées bonnes écartées. Réduite par le verdict, la note relue vaut
- * la note locale (79 % contre 80 % ; 87 % contre 87 %) avec deux fois moins
- * d'offres hors sujet dans le top 10 du banc marché.
+ * réduit. Mesuré en octobre 2026 avec de vraies relectures (Gemini) :
+ *
+ * - Remplacer la note locale par celle de l'IA, avec un filtre « compétences
+ *   indispensables absentes », faisait passer le NDCG@20 de 80 % à 69 % sur
+ *   l'ancien banc et de 87 % à 83 % sur le banc marché (16 profils) : presque
+ *   toutes les bonnes offres sortaient à 100, ex æquo, sans plus rien pour
+ *   départager contrat, zone ou intitulé ; et le filtre écartait 20 offres
+ *   jugées bonnes pour un « Spotfire » ou un « HTML et CSS » manquant.
+ * - Réduite par le verdict, avec la consigne review-v5 (un outil manquant ne
+ *   fait plus « hors profil ») : 80 % sur l'ancien banc (80 % sans IA), 89 %
+ *   sur le banc marché (87 % sans IA), une offre hors sujet dans le top 10
+ *   pour 16 profils au lieu de 6. Plat de 0,8 à 0,9 et de 0,5 à 0,7.
  */
 const VERDICT_FACTOR: Record<Verdict, number> = {
   postuler: 1,
-  a_tenter: 0.9,
-  hors_profil: 0.7,
+  a_tenter: 0.85,
+  hors_profil: 0.6,
 };
 
 export function aiFactor(r: AiReview): number {

@@ -28,9 +28,13 @@ L'offre est-elle le métier que le candidat vise (`postes_vises`) ou qu'il exerc
 
 ## 3. `verdict`
 
-- `postuler` : les indispensables sont couverts (au plus un `partiel`), le candidat peut obtenir ce poste maintenant.
-- `a_tenter` : un indispensable manque, ou plusieurs sont partiels ; une candidature reste défendable.
-- `hors_profil` : plusieurs COMPÉTENCES indispensables absentes, ou autre métier. Un diplôme, des années ou une condition administrative qui manquent, seuls, font tout au plus `a_tenter`.
+Le verdict dit si la candidature a une chance réelle, pas si le candidat coche chaque ligne : une annonce décrit un idéal, et un recruteur retient volontiers quelqu'un du métier à qui manquent un outil ou une spécialité.
+
+- `postuler` : le métier visé ou un métier voisin, au niveau du candidat, sans rien de bloquant qui manque. Un ou deux outils, logiciels, technologies ou connaissances d'un secteur absents n'empêchent pas `postuler`.
+- `a_tenter` : candidature défendable mais fragile. Plusieurs compétences CENTRALES du poste manquent ; ou le niveau est décalé — années demandées nettement au-dessus du profil, poste « senior », « lead », « expert » ou « confirmé » pour un profil débutant, ou à l'inverse poste nettement en dessous de son niveau (« aide- », « assistant » de son propre métier, poste de débutant pour un expérimenté) ; ou une spécialité très éloignée de la sienne dans le même métier.
+- `hors_profil` : SEULEMENT dans deux cas. (1) Un autre métier (`role_fit` de 30 ou moins). (2) Une condition BLOQUANTE absente : un diplôme d'État ou un titre que la loi exige pour exercer (infirmier, aide-soignant, préparateur en pharmacie…), un permis de conduire d'une catégorie que le poste exige, une langue de travail que le candidat ne parle pas.
+
+Des outils, des technologies, une méthode ou une connaissance sectorielle qui manquent, même plusieurs, ne font JAMAIS `hors_profil` : au pire `a_tenter`. Une habilitation ou un CACES se passent en formation chez l'employeur : ils ne bloquent pas. Un diplôme, des années ou une condition administrative qui manquent, seuls, font tout au plus `a_tenter`.
 
 ## 4. `reason`
 
