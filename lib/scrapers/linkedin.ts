@@ -3,6 +3,7 @@ import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./bas
 import { htmlToText, newContext } from "./base";
 import { detectVie } from "@/lib/vie";
 import { normalizeCountryName, strictCountryName } from "@/lib/countries";
+import { searchAreaCity, type SearchArea } from "@/lib/geo/fr";
 
 const SOURCE = "linkedin";
 
@@ -16,6 +17,18 @@ type ListingCard = {
   /** Pays de la recherche qui a trouvé l'offre (paramètre location). */
   searchCountry?: string | null;
 };
+
+/**
+ * Lieux de recherche pour un pays : en France avec une zone, d'abord la ville qui
+ * la représente (LinkedIn y cherche dans un rayon), puis tout le pays. Sans la
+ * première, une offre marseillaise se noyait parmi les parisiennes : 37 offres
+ * LinkedIn pour un UX designer des Bouches-du-Rhône, aucune dans la zone (banc
+ * marché, octobre 2026).
+ */
+export function linkedinLocations(country: string, area: SearchArea | null | undefined): string[] {
+  const city = area && country === "France" ? searchAreaCity(area) : null;
+  return city ? [city, country] : [country];
+}
 
 export const linkedinScraper: Scraper = {
   name: SOURCE,
@@ -35,31 +48,33 @@ export const linkedinScraper: Scraper = {
       // sur la première combinaison.
       for (const sector of criteria.queries.length ? criteria.queries : [""]) {
         for (const country of countries) {
-          if (cards.length >= max) break;
-          let start = 0;
-          for (let p = 0; p < 2 && cards.length < max; p++) {
-            const url = `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=${encodeURIComponent(
-              sector
-            )}&location=${encodeURIComponent(country)}&start=${start}`;
-            let pageCards: ListingCard[] = [];
-            try {
-              await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-              await page.waitForTimeout(400);
-              pageCards = (await extractListingCards(page)).map((c) => ({ ...c, searchCountry: country || null }));
-            } catch {
-              break;
+          for (const location of linkedinLocations(country, criteria.area)) {
+            if (cards.length >= max) break;
+            let start = 0;
+            for (let p = 0; p < 2 && cards.length < max; p++) {
+              const url = `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=${encodeURIComponent(
+                sector
+              )}&location=${encodeURIComponent(location)}&start=${start}`;
+              let pageCards: ListingCard[] = [];
+              try {
+                await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+                await page.waitForTimeout(400);
+                pageCards = (await extractListingCards(page)).map((c) => ({ ...c, searchCountry: country || null }));
+              } catch {
+                break;
+              }
+              if (!pageCards.length) break;
+              let added = 0;
+              for (const c of pageCards) {
+                if (seen.has(c.jobId)) continue;
+                seen.add(c.jobId);
+                cards.push(c);
+                added++;
+                if (cards.length >= max) break;
+              }
+              if (added === 0) break;
+              start += 25;
             }
-            if (!pageCards.length) break;
-            let added = 0;
-            for (const c of pageCards) {
-              if (seen.has(c.jobId)) continue;
-              seen.add(c.jobId);
-              cards.push(c);
-              added++;
-              if (cards.length >= max) break;
-            }
-            if (added === 0) break;
-            start += 25;
           }
         }
       }

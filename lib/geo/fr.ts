@@ -133,6 +133,51 @@ export const DEPARTEMENTS: Departement[] = [
 ];
 
 /**
+ * Ville qui représente une zone pour une source qui ne cherche que par lieu en
+ * texte libre (LinkedIn) : la préfecture du département, la capitale de la
+ * région. Un nom de département ou de région n'y est pas reconnu de façon sûre —
+ * « Bouches-du-Rhône » ne renvoie rien, « Île-de-France » renvoie des offres
+ * bretonnes — alors qu'une ville l'est, avec les communes autour (« Orléans » :
+ * Orléans, Pithiviers, Saint-Jean-de-la-Ruelle ; vérifié en octobre 2026).
+ */
+const PREFECTURE: Record<string, string> = {
+  "01": "Bourg-en-Bresse", "02": "Laon", "03": "Moulins", "04": "Digne-les-Bains", "05": "Gap", "06": "Nice",
+  "07": "Privas", "08": "Charleville-Mézières", "09": "Foix", "10": "Troyes", "11": "Carcassonne", "12": "Rodez",
+  "13": "Marseille", "14": "Caen", "15": "Aurillac", "16": "Angoulême", "17": "La Rochelle", "18": "Bourges",
+  "19": "Tulle", "2A": "Ajaccio", "2B": "Bastia", "21": "Dijon", "22": "Saint-Brieuc", "23": "Guéret",
+  "24": "Périgueux", "25": "Besançon", "26": "Valence", "27": "Évreux", "28": "Chartres", "29": "Quimper",
+  "30": "Nîmes", "31": "Toulouse", "32": "Auch", "33": "Bordeaux", "34": "Montpellier", "35": "Rennes",
+  "36": "Châteauroux", "37": "Tours", "38": "Grenoble", "39": "Lons-le-Saunier", "40": "Mont-de-Marsan",
+  "41": "Blois", "42": "Saint-Étienne", "43": "Le Puy-en-Velay", "44": "Nantes", "45": "Orléans", "46": "Cahors",
+  "47": "Agen", "48": "Mende", "49": "Angers", "50": "Saint-Lô", "51": "Châlons-en-Champagne", "52": "Chaumont",
+  "53": "Laval", "54": "Nancy", "55": "Bar-le-Duc", "56": "Vannes", "57": "Metz", "58": "Nevers", "59": "Lille",
+  "60": "Beauvais", "61": "Alençon", "62": "Arras", "63": "Clermont-Ferrand", "64": "Pau", "65": "Tarbes",
+  "66": "Perpignan", "67": "Strasbourg", "68": "Colmar", "69": "Lyon", "70": "Vesoul", "71": "Mâcon",
+  "72": "Le Mans", "73": "Chambéry", "74": "Annecy", "75": "Paris", "76": "Rouen", "77": "Melun",
+  "78": "Versailles", "79": "Niort", "80": "Amiens", "81": "Albi", "82": "Montauban", "83": "Toulon",
+  "84": "Avignon", "85": "La Roche-sur-Yon", "86": "Poitiers", "87": "Limoges", "88": "Épinal", "89": "Auxerre",
+  "90": "Belfort", "91": "Évry-Courcouronnes", "92": "Nanterre", "93": "Bobigny", "94": "Créteil", "95": "Cergy",
+  "971": "Basse-Terre", "972": "Fort-de-France", "973": "Cayenne", "974": "Saint-Denis", "976": "Mamoudzou",
+};
+
+const REGION_CAPITAL: Record<string, string> = {
+  "84": "Lyon", "27": "Dijon", "53": "Rennes", "24": "Orléans", "94": "Ajaccio", "44": "Strasbourg",
+  "01": "Basse-Terre", "03": "Cayenne", "32": "Lille", "11": "Paris", "04": "Saint-Denis", "02": "Fort-de-France",
+  "06": "Mamoudzou", "28": "Rouen", "75": "Bordeaux", "76": "Toulouse", "52": "Nantes", "93": "Marseille",
+};
+
+/** Outre-mer : le nom du territoire désambiguïse (« Saint-Denis » de La Réunion, pas de Seine-Saint-Denis). */
+const OVERSEAS: Record<string, string> = { "01": "Guadeloupe", "02": "Martinique", "03": "French Guiana", "04": "Réunion", "06": "Mayotte" };
+
+/** « Marseille, France » pour D:13 ; « Lyon, France » pour R:84 ; null si inconnu. */
+export function searchAreaCity(area: SearchArea): string | null {
+  const region = area.kind === "region" ? area.code : DEPARTEMENTS.find((d) => d.code === area.code)?.region;
+  const city = area.kind === "region" ? REGION_CAPITAL[area.code] : PREFECTURE[area.code];
+  if (!city || !region) return null;
+  return `${city}, ${OVERSEAS[region] ?? "France"}`;
+}
+
+/**
  * Zone de recherche du profil : « » (tout le pays), « R:84 » (une région) ou
  * « D:69 » (un département). Une valeur inconnue vaut « tout le pays ».
  */

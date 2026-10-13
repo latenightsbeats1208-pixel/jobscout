@@ -290,3 +290,18 @@ describe("LinkedIn", () => {
     expect(linkedinCountry(null, "Lyon et périphérie", null)).toBeNull();
   });
 });
+
+describe("LinkedIn : chercher dans la zone avant tout le pays", () => {
+  it("la ville qui représente la zone, puis le pays", async () => {
+    const { linkedinLocations } = await import("@/lib/scrapers/linkedin");
+    const { parseSearchArea, searchAreaCity } = await import("@/lib/geo/fr");
+    expect(linkedinLocations("France", parseSearchArea("D:13"))).toEqual(["Marseille, France", "France"]);
+    expect(linkedinLocations("France", parseSearchArea("R:84"))).toEqual(["Lyon, France", "France"]);
+    expect(linkedinLocations("France", null)).toEqual(["France"]);
+    // La zone est française : elle ne s'applique pas à un autre pays.
+    expect(linkedinLocations("Suisse", parseSearchArea("D:13"))).toEqual(["Suisse"]);
+    // Outre-mer : le territoire lève l'homonymie avec la Seine-Saint-Denis.
+    expect(searchAreaCity(parseSearchArea("D:974")!)).toBe("Saint-Denis, Réunion");
+    expect(searchAreaCity(parseSearchArea("D:93")!)).toBe("Bobigny, France");
+  });
+});
