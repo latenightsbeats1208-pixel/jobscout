@@ -6,8 +6,7 @@ import { providerBaseUrlSetting, providerModelsSetting } from "@/lib/ai/client";
 import { BATCH_SIZE, descriptionExcerpt, reviewOffres } from "@/lib/ai/review-offres";
 import {
   REVIEW_VERSION,
-  aiExclusion,
-  aiRelevance,
+  aiFactor,
   isReviewCurrent,
   isReviewUsable,
   offerHash,
@@ -64,7 +63,6 @@ describe("réponse du modèle", () => {
     const musts = [mh("Permis B titulaire", "non"), mh("Maintenance CVC", "oui")];
     const r = parseReview({ verdict: "hors_profil", role_fit: 100, must_haves: musts }, meta, adWith("Permis B titulaire", "Maintenance CVC"))!;
     expect(r.skills_fit).toBe(100);
-    expect(aiExclusion(r)).toBeNull();
   });
 
   it("rejette une réponse sans verdict exploitable, accepte les verdicts anglais", () => {
@@ -97,7 +95,6 @@ describe("exigences citées ou déduites", () => {
       shortAd
     )!;
     expect(r.must_haves.every((m) => !m.verified)).toBe(true);
-    expect(aiExclusion(r)).toBeNull();
     expect(isReviewUsable(r)).toBe(false);
   });
 
@@ -130,24 +127,18 @@ describe("note et filtre de compétences", () => {
   const verified = (requirement: string, covered: "oui" | "partiel" | "non") =>
     ({ requirement, covered, kind: "competence" as const, citation: requirement, verified: true });
 
-  it("le verdict ancre la note dans sa bande", () => {
-    expect(aiRelevance({ ...base, must_haves: [], skills_fit: 40, role_fit: 40, verdict: "postuler" })).toBe(70);
-    expect(aiRelevance({ ...base, must_haves: [], skills_fit: 100, role_fit: 100, verdict: "hors_profil" })).toBe(45);
-  });
-
-  it("écarte une offre hors profil faute de compétences, pas faute de métier", () => {
-    const missing = [verified("Java", "non"), verified("Spring Boot", "non"), verified("Agilité", "oui")];
-    expect(aiExclusion({ ...base, must_haves: missing, skills_fit: 33, role_fit: 20, verdict: "hors_profil" })).toBe(
-      "compétences indispensables absentes : Java, Spring Boot"
+  it("le verdict réduit la note locale, il ne la remplace pas", () => {
+    expect(aiFactor({ ...base, must_haves: [], skills_fit: 100, role_fit: 100, verdict: "postuler" })).toBe(1);
+    expect(aiFactor({ ...base, must_haves: [], skills_fit: 50, role_fit: 50, verdict: "a_tenter" })).toBeLessThan(1);
+    expect(aiFactor({ ...base, must_haves: [], skills_fit: 0, role_fit: 0, verdict: "hors_profil" })).toBeLessThan(
+      aiFactor({ ...base, must_haves: [], skills_fit: 0, role_fit: 0, verdict: "a_tenter" })
     );
-    expect(aiExclusion({ ...base, must_haves: [], skills_fit: 80, role_fit: 20, verdict: "hors_profil" })).toBeNull();
   });
 
-  it("un diplôme ou des années manquants n'écartent pas : seules les compétences filtrent", () => {
+  it("un diplôme ou des années manquants ne comptent pas dans les compétences couvertes", () => {
     const musts = [mh("Master école de commerce", "non", "diplome"), mh("4 ans de vente B2B", "non", "experience"), mh("Prospection", "oui")];
     const r = parseReview({ verdict: "hors_profil", role_fit: 60, must_haves: musts }, meta, adWith(...musts.map((m) => m.requirement)))!;
     expect(r.skills_fit).toBe(100);
-    expect(aiExclusion(r)).toBeNull();
   });
 
   it("une relecture n'est valable que pour le même profil et la même annonce", () => {
@@ -158,14 +149,14 @@ describe("note et filtre de compétences", () => {
     expect(isReviewCurrent(r, profileHash(ba), offerHash({ ...offre, description_text: "Autre." }))).toBe(false);
   });
 
-  it("dans la note, la relecture remplace la pertinence locale et son filtre passe en premier", () => {
+  it("dans la note, un « hors profil » descend sans être écarté (banc marché : l'IA écartait 20 bonnes offres)", () => {
     const offre = { title: "Business Analyst Assurance", company: "X", country: "France", description_text: "Recueil des besoins, spécifications fonctionnelles et recette en assurance vie." };
     const [local] = scoreOffresLocal(ba, [offre]);
     const review = { ...base, must_haves: [verified("Java", "non")], skills_fit: 0, role_fit: 30, verdict: "hors_profil" as const, reason: "Il vous manque Java." };
     const [withAi] = scoreOffresLocal(ba, [offre], undefined, [review]);
-    expect(local.breakdown.excluded).toBeUndefined();
-    expect(withAi.breakdown.excluded).toMatch(/^compétences indispensables absentes/);
-    expect(withAi.score).toBeLessThanOrEqual(15);
+    expect(withAi.breakdown.excluded).toBeUndefined();
+    expect(withAi.score).toBeLessThan(local.score);
+    expect(withAi.score).toBeGreaterThan(15);
     expect(withAi.reason).toContain("IA : Il vous manque Java.");
     expect(withAi.breakdown.ai_verdict).toBe("hors_profil");
   });

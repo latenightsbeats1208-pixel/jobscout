@@ -180,34 +180,27 @@ export function parseReview(
   };
 }
 
-/** Bandes de note par verdict : le verdict ancre la note, les deux mesures la placent dans la bande. */
-const BANDS: Record<Verdict, [number, number]> = {
-  postuler: [70, 100],
-  a_tenter: [40, 75],
-  hors_profil: [0, 45],
+/**
+ * Ce que la relecture fait de la note : la note locale reste, le verdict la
+ * réduit. Mesuré en octobre 2026 avec de vraies relectures (Gemini) : remplacer
+ * la note locale par celle de l'IA, avec un filtre « compétences indispensables
+ * absentes », faisait passer le NDCG@20 de 80 % à 69 % sur l'ancien banc et de
+ * 87 % à 83 % sur le banc marché (16 profils). Deux causes : presque toutes les
+ * bonnes offres sortaient à 100, ex æquo, et ni le contrat, ni la zone, ni
+ * l'intitulé ne départageaient plus ; et le modèle déclare « indispensable » un
+ * détail de l'annonce (« Spotfire », « HTML et CSS », « conduite de nacelle ») —
+ * 20 offres jugées bonnes écartées. Réduite par le verdict, la note relue vaut
+ * la note locale (79 % contre 80 % ; 87 % contre 87 %) avec deux fois moins
+ * d'offres hors sujet dans le top 10 du banc marché.
+ */
+const VERDICT_FACTOR: Record<Verdict, number> = {
+  postuler: 1,
+  a_tenter: 0.9,
+  hors_profil: 0.7,
 };
 
-/** Pertinence 0–100 d'une offre relue : compétences couvertes d'abord, métier ensuite. */
-export function aiRelevance(r: AiReview): number {
-  const raw = 0.6 * r.skills_fit + 0.4 * r.role_fit;
-  const [lo, hi] = BANDS[r.verdict];
-  return Math.max(lo, Math.min(hi, raw));
-}
-
-/**
- * Le filtre de compétences : hors critères quand le modèle juge l'offre hors
- * profil ET que moins de 40 % des COMPÉTENCES indispensables sont couvertes.
- * Un « hors profil » qui tient au métier, au diplôme ou aux années reste noté
- * bas sans être écarté.
- */
-export function aiExclusion(r: AiReview): string | null {
-  if (r.verdict !== "hors_profil" || r.skills_fit >= 40) return null;
-  if (!r.must_haves.some((m) => m.kind === "competence" && m.verified)) return null;
-  const missing = r.must_haves
-    .filter((m) => m.kind === "competence" && m.verified && m.covered === "non")
-    .map((m) => m.requirement)
-    .slice(0, 3);
-  return `compétences indispensables absentes${missing.length ? ` : ${missing.join(", ")}` : ""}`;
+export function aiFactor(r: AiReview): number {
+  return VERDICT_FACTOR[r.verdict];
 }
 
 /**

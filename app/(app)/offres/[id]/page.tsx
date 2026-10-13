@@ -212,7 +212,7 @@ function AiReviewPanel({ review }: { review: NonNullable<OffreFiltered["ai_revie
                 <span aria-hidden="true" className={`w-4 shrink-0 font-semibold ${c.className}`}>{c.mark}</span>
                 <span>
                   {m.requirement}
-                  {/* Diplômes, années, langues, conditions administratives : affichés, mais seules les compétences filtrent. */}
+                  {/* Diplômes, années, langues, conditions administratives : affichés, hors du taux de compétences couvertes. */}
                   {m.kind && m.kind !== "competence" && <span className="text-textSecondary"> · {KIND_LABEL[m.kind]}</span>}
                   {m.verified === false && <span className="text-textSecondary"> · déduite, ne compte pas</span>}
                   <span className="sr-only"> : {c.label}</span>

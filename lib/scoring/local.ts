@@ -17,7 +17,7 @@ import {
 } from "./text";
 import { assessSeniority, profileExperienceYears } from "./seniority";
 import { assessLanguage, profileLanguages, type Mastery } from "./language";
-import { aiExclusion, aiRelevance, isReviewUsable, type AiReview } from "./review";
+import { aiFactor, isReviewUsable, type AiReview } from "./review";
 import { parseSearchArea, type SearchArea } from "@/lib/geo/fr";
 import { zoneFit } from "@/lib/geo/locate";
 import { decodeHtmlEntities } from "@/lib/text/entities";
@@ -453,26 +453,22 @@ function scorePrepared(
   // 1. Filtres. Une offre qui en échoue un est « hors critères » : visible en
   //    fin de liste, note plafonnée.
   const exclusions: string[] = [];
-  // Les compétences d'abord, quand l'IA a pu les juger (voir lib/scoring/review.ts) :
-  // la note locale ne sait pas les juger assez sûrement pour écarter une offre.
-  const aiExcluded = review ? aiExclusion(review) : null;
-  if (aiExcluded) exclusions.push(aiExcluded);
   if (language.excluded) exclusions.push(language.excluded);
   if (country === 0) exclusions.push(`hors des pays cibles (${offre.country})`);
   if (seniority.excluded) exclusions.push(seniority.excluded);
   if (contract.excluded) exclusions.push(contract.excluded);
 
-  // 2. Pertinence, parmi les offres acceptables. Relue par l'IA, c'est son
-  //    jugement (exigences couvertes, métier) qui fait foi.
+  // 2. Pertinence, parmi les offres acceptables.
   // Une annonce courte n'a pas pu citer les compétences : sa note de compétences
   // est ramenée vers la moyenne, à proportion du texte qui manque.
   const evidence = Math.min(1, offre.description_text.length / SKILLS_EVIDENCE_CHARS);
   const skillsUsed = evidence * skills.score + (1 - evidence) * SKILLS_PRIOR;
-  const relevance = review
-    ? aiRelevance(review)
-    : WEIGHTS.title * title.score +
-      WEIGHTS.skills * 100 * Math.min(1, skillsUsed / SKILLS_FULL_CREDIT) +
-      WEIGHTS.keywords * keywords.score;
+  const localRelevance =
+    WEIGHTS.title * title.score +
+    WEIGHTS.skills * 100 * Math.min(1, skillsUsed / SKILLS_FULL_CREDIT) +
+    WEIGHTS.keywords * keywords.score;
+  // Relue par l'IA, la note locale est réduite selon le verdict (voir lib/scoring/review.ts).
+  const relevance = review ? localRelevance * aiFactor(review) : localRelevance;
 
   // 3. Ajustements : niveaux partiels (expérience, langue), puis préférences.
   const durationBonus = (duration.score / 100) * 5; // jusqu'à +5, V.I.E seulement
