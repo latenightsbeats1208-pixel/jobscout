@@ -18,6 +18,9 @@ import {
 import { assessSeniority, profileExperienceYears } from "./seniority";
 import { assessLanguage, profileLanguages, type Mastery } from "./language";
 import { aiExclusion, aiRelevance, isReviewUsable, type AiReview } from "./review";
+import { parseSearchArea, type SearchArea } from "@/lib/geo/fr";
+import { zoneFit } from "@/lib/geo/locate";
+import { decodeHtmlEntities } from "@/lib/text/entities";
 
 export type { Corpus } from "./text";
 export { buildCorpus } from "./text";
@@ -36,6 +39,8 @@ export type ScoreResult = {
     title: number;
     /** Adéquation entre l'expérience demandée et celle du profil. */
     seniority: number;
+    /** Lieu par rapport à la zone de recherche (100 dans, 70 proche, 20 hors) ; absent si inconnu. */
+    location?: number;
     /** Motif d'exclusion : l'offre est hors critères, quelle que soit sa note. */
     excluded?: string;
     /** Verdict de la relecture par l'IA, quand elle a remplacé la pertinence locale. */
@@ -122,6 +127,7 @@ type PreparedProfile = {
   vocabulary: Set<string>;
   years: number | null;
   languages: Map<string, Mastery> | null;
+  area: SearchArea | null;
 };
 
 function prepareProfile(profile: ProfileFull, corpus: Corpus): PreparedProfile {
@@ -172,6 +178,7 @@ function prepareProfile(profile: ProfileFull, corpus: Corpus): PreparedProfile {
     vocabulary: new Set(tokenize(vocabularyText)),
     years: profileExperienceYears(profile),
     languages: profileLanguages(profile),
+    area: parseSearchArea(profile.search_area),
   };
 }
 
@@ -369,16 +376,24 @@ function scoreDuration(
 function scoreContract(
   preferred: string[] | undefined,
   offre: ScoringInput
-): { score: number; category: ContractCategory } {
+): { score: number; category: ContractCategory; excluded: string | null; freelance: boolean } {
   const category = classifyContract({
     contract_type: offre.contract_type ?? null,
     title: offre.title,
     description_text: offre.description_text,
   });
   const prefs = preferred?.length ? preferred : ["cdi", "cdd"];
-  if (category === "autre") return { score: 50, category };
-  if (prefs.includes(category)) return { score: 100, category };
-  return { score: 20, category };
+  // Le contrat de la source ou le titre disent l'offre ; la description, elle,
+  // mentionne aussi « stage » ou « alternance » dans des annonces de CDI.
+  const declared = normalize(`${offre.contract_type ?? ""} ${offre.title}`);
+  const freelance = /\b(freelance|independant|auto entrepreneur|portage salarial)\b/.test(declared.replace(/[^a-z]+/g, " "));
+  const training =
+    (category === "stage" && /\b(stage|stagiaire|internship|intern)\b/.test(declared)) ||
+    (category === "alternance" && /\b(alternance|alternant|apprentissage|apprenti|contrat pro)\b/.test(declared));
+  const excluded = training && !prefs.includes(category) ? `${category === "stage" ? "stage" : "alternance"}, hors des contrats recherchés` : null;
+  if (category === "autre") return { score: 50, category, excluded, freelance };
+  if (prefs.includes(category)) return { score: 100, category, excluded, freelance };
+  return { score: 20, category, excluded, freelance };
 }
 
 // ----------------------------------------------------------------------------
@@ -393,6 +408,11 @@ export type ScoringInput = {
   contract_type?: string | null;
   /** Ville de l'offre : retirée du titre avant comparaison. */
   location?: string | null;
+  /**
+   * Texte écarté par le contrôle de qualité (description d'un autre poste) :
+   * il ne dit rien du poste, mais sa langue reste celle de l'annonce et de son site.
+   */
+  language_text?: string | null;
 };
 
 function scorePrepared(
@@ -412,9 +432,10 @@ function scorePrepared(
   const keywords = scoreKeywords(p, o);
   const country = scoreCountry(profile.target_countries, offre.country);
   const seniority = assessSeniority(p.years, offre.title, offre.description_text);
-  const language = assessLanguage(p.languages, offre.title, offre.description_text);
+  const language = assessLanguage(p.languages, offre.title, offre.description_text || offre.language_text || "");
   const contract = scoreContract(profile.preferred_contracts, offre);
   const duration = scoreDuration(contract.category, offre.description_text);
+  const zone = zoneFit(p.area, offre);
 
   // 1. Filtres. Une offre qui en échoue un est « hors critères » : visible en
   //    fin de liste, note plafonnée.
@@ -426,6 +447,7 @@ function scorePrepared(
   if (language.excluded) exclusions.push(language.excluded);
   if (country === 0) exclusions.push(`hors des pays cibles (${offre.country})`);
   if (seniority.excluded) exclusions.push(seniority.excluded);
+  if (contract.excluded) exclusions.push(contract.excluded);
 
   // 2. Pertinence, parmi les offres acceptables. Relue par l'IA, c'est son
   //    jugement (exigences couvertes, métier) qui fait foi.
@@ -439,8 +461,16 @@ function scorePrepared(
   const durationBonus = (duration.score / 100) * 5; // jusqu'à +5, V.I.E seulement
   // Contrat : centré sur 50 → contrat recherché +10, inconnu 0, identifié mais non recherché −6
   const contractDelta = ((contract.score - 50) / 50) * 10;
+  // Lieu : la zone choisie par la personne. Hors zone, l'offre reste visible mais
+  // passe après les offres de sa zone ; une région voisine coûte peu.
+  const zoneFactor = zone.fit === "hors" ? 0.55 : zone.fit === "proche" ? 0.85 : 1;
+  // Freelance pour qui cherche un salariat : visible, mais en retrait.
+  const freelanceFactor = contract.freelance ? 0.75 : 1;
   let finalScore = Math.round(
-    Math.max(0, Math.min(100, relevance * seniority.factor * language.factor + durationBonus + contractDelta))
+    Math.max(
+      0,
+      Math.min(100, relevance * seniority.factor * language.factor * zoneFactor * freelanceFactor + durationBonus + contractDelta)
+    )
   );
   if (exclusions.length) finalScore = Math.min(finalScore, EXCLUDED_CAP);
 
@@ -462,6 +492,9 @@ function scorePrepared(
       parts.push("aucune compétence du profil reconnue dans l'annonce");
     }
   }
+  if (zone.fit === "hors") parts.push(`hors de votre zone (${zone.place})`);
+  else if (zone.fit === "proche") parts.push(`près de votre zone (${zone.place})`);
+  if (contract.freelance) parts.push("freelance");
   if (!seniority.excluded && seniority.note) parts.push(seniority.note);
   if (!language.excluded && language.note) parts.push(language.note);
   if (duration.months && duration.score >= 60) parts.push(`durée ${duration.months} mois`);
@@ -480,6 +513,7 @@ function scorePrepared(
       contract: contract.score,
       title: title.score,
       seniority: seniority.score,
+      ...(zone.fit ? { location: zone.fit === "dans" ? 100 : zone.fit === "proche" ? 70 : 20 } : {}),
       ...(exclusions.length ? { excluded: exclusions.join(" ; ") } : {}),
       ...(review ? { ai_verdict: review.verdict } : {}),
     },
@@ -492,7 +526,13 @@ function scorePrepared(
  * mesurée et tous les mots pèsent pareil : préférer `scoreOffresLocal`, ou
  * passer le corpus de toutes les offres de la base.
  */
-export function scoreOffreLocal(profile: ProfileFull, offre: ScoringInput, corpus?: Corpus): ScoreResult {
+/** Texte d'annonce sans entités HTML (« 6&#xa0;ans ») : les offres déjà en base en gardent. */
+function cleanInput(o: ScoringInput): ScoringInput {
+  return { ...o, title: decodeHtmlEntities(o.title), description_text: decodeHtmlEntities(o.description_text) };
+}
+
+export function scoreOffreLocal(profile: ProfileFull, rawOffre: ScoringInput, corpus?: Corpus): ScoreResult {
+  const offre = cleanInput(rawOffre);
   const c = corpus ?? buildCorpus([offre]);
   return scorePrepared(profile, prepareProfile(profile, c), offre, prepareOffer(offre), c);
 }
@@ -508,6 +548,7 @@ export function scoreOffresLocal(
   /** Relectures par l'IA alignées sur `offres` ; l'appelant n'y met que celles encore valables. */
   reviews?: (AiReview | null | undefined)[]
 ): ScoreResult[] {
+  offres = offres.map(cleanInput);
   const c = corpus ?? buildCorpus(offres);
   const p = prepareProfile(profile, c);
   return offres.map((o, i) => scorePrepared(profile, p, o, prepareOffer(o), c, reviews?.[i]));

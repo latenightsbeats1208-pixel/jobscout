@@ -109,6 +109,7 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
                 {/* Les notes calculées avant l'intitulé appelaient ce critère « Secteur ». */}
                 <ScoreBar label={offre.score_breakdown.title != null ? "Mots-clés" : "Secteur"} value={offre.score_breakdown.sector} />
                 <ScoreBar label="Pays" value={offre.score_breakdown.country} />
+                {offre.score_breakdown.location != null && <ScoreBar label="Lieu" value={offre.score_breakdown.location} />}
                 {offre.score_breakdown.language != null && <ScoreBar label="Langue" value={offre.score_breakdown.language} />}
                 {offre.score_breakdown.contract != null && <ScoreBar label="Contrat" value={offre.score_breakdown.contract} />}
                 {offre.score_breakdown.duration != null && offre.score_breakdown.duration > 0 && <ScoreBar label="Durée V.I.E" value={offre.score_breakdown.duration} />}

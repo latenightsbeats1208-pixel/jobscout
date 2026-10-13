@@ -16,7 +16,9 @@ export function loadScoringRows(): ScoringRow[] {
   const rows = getDb()
     .prepare("SELECT id, title, company, country, location, description_text, contract_type, ai_review, description_status FROM offres")
     .all() as ScoringRow[];
-  return rows.map((r) => ({ ...r, description_text: r.description_status === "failed" ? "" : r.description_text }));
+  return rows.map((r) =>
+    r.description_status === "failed" ? { ...r, description_text: "", language_text: r.description_text } : r
+  );
 }
 
 /** Rareté des mots mesurée sur toutes les offres de la base. */

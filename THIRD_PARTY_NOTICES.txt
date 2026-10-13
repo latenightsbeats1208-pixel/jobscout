@@ -205,3 +205,15 @@ INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
 DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
+
+===========================================================================
+Liste des communes de France - lib/geo/communes-fr.json
+===========================================================================
+
+Noms et départements des communes d'au moins 1 000 habitants, extraits de
+l'API Découpage administratif (https://geo.api.gouv.fr), publiée par
+l'Etalab sous la Licence Ouverte 2.0
+(https://www.etalab.gouv.fr/licence-ouverte-open-licence). Source : base
+officielle du Code officiel géographique (Insee). Régénérée par
+scripts/build-communes.mjs ; sert à situer une offre par rapport à la zone
+de recherche, sans aucun appel réseau à l'usage.

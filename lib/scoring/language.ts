@@ -178,6 +178,8 @@ export function requiredLanguages(title: string, description: string): string[] 
   const t = norm(title);
   const d = norm(description).replace(/\s+/g, " ");
   const out = new Set<string>();
+  // « Bilingue anglais », dans une annonce française : français ET anglais.
+  if (/\bbilingue\s+(?:en\s+)?(?:anglais|allemand|espagnol|italien|neerlandais|portugais|chinois|arabe)\b/.test(`${t} ${d}`)) out.add("fr");
   for (const [iso, info] of Object.entries(LANGS)) {
     // Un titre ne cite une langue que lorsqu'il l'exige (« German Speaking », « (Portuguese Language) »).
     if (info.names.some((n) => new RegExp(String.raw`\b${n}\b`).test(t))) {
@@ -198,6 +200,19 @@ export function requiredLanguages(title: string, description: string): string[] 
     }
   }
   return [...out];
+}
+
+const REQUIREMENTS_HEADER =
+  /(?:profil recherche|votre profil|le profil|profil souhaite|ce que nous recherchons|qui etes vous|ce qu on attend de vous|vos atouts|competences requises|vous etes|requirements|your profile|about you|who you are|what you(?:'|’)ll bring|what we(?:'|’)re looking for|qualifications)/;
+
+/** Le bloc des exigences (« Profil recherché », « Requirements »…), s'il est assez long pour dire sa langue. */
+function requirementSection(description: string): string | null {
+  // Ponctuation en espaces : « Qui êtes-vous ? » doit se lire « qui etes vous ».
+  const d = norm(description).replace(/[^a-z0-9'’]+/g, " ");
+  const at = d.search(REQUIREMENTS_HEADER);
+  if (at < 0) return null;
+  const section = d.slice(at, at + 1200);
+  return section.length >= 200 ? section : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +258,28 @@ export function assessLanguage(
     }
   }
 
-  // 2. Langues exigées.
+  // 2. Langue du « profil recherché ». Le reste d'une annonce peut être dans une
+  //    autre langue sans rien dire du poste : présentation du groupe en anglais
+  //    puis exigences en français (Essity), résumé rédigé par le site d'emploi
+  //    (Welcome to the Jungle résume en anglais des annonces françaises, et
+  //    inversement). Ce sont les exigences qui disent la langue de travail.
+  const requirements = requirementSection(description);
+  if (requirements) {
+    const req = detectLanguage(requirements).lang;
+    // Même langue que l'annonce à niveau partiel : déjà pénalisée plus haut.
+    const alreadyPenalized = !!req && req === lang && spoken.get(req) === "partial";
+    if (req && !alreadyPenalized && spoken.get(req) !== "mastered") {
+      if (spoken.get(req) === "partial") {
+        factor *= 0.6;
+        notes.push(`profil recherché rédigé en ${label(req).replace(/^(le |l')/, "")}, niveau partiel au profil`);
+      } else {
+        const reason = `profil recherché rédigé en ${label(req).replace(/^(le |l')/, "")}, langue absente du profil`;
+        return { score: 0, factor: 1, excluded: reason, note: reason, offerLang: lang };
+      }
+    }
+  }
+
+  // 3. Langues exigées.
   for (const iso of requiredLanguages(title, description)) {
     const m = spoken.get(iso);
     if (m === "mastered") continue;

@@ -37,6 +37,8 @@ export type OffreRow = {
     title?: number;
     /** Adéquation de l'expérience demandée (absent des notes antérieures). */
     seniority?: number;
+    /** Lieu par rapport à la zone de recherche (absent si inconnu). */
+    location?: number;
     /** Motif d'exclusion : l'offre est hors critères. */
     excluded?: string;
     /** Verdict de la relecture par l'IA, quand elle a eu lieu. */

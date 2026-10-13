@@ -1,4 +1,5 @@
 import type { SearchArea } from "@/lib/geo/fr";
+import { decodeHtmlEntities } from "@/lib/text/entities";
 import "server-only";
 import type { Browser, BrowserContext } from "playwright";
 import {
@@ -80,18 +81,14 @@ export async function newContext(): Promise<BrowserContext> {
 }
 
 export function htmlToText(html: string): string {
-  return html
+  const text = html
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    .replace(/<[^>]+>/g, "");
+  // Toutes les entités, numériques et doublement encodées comprises (« 6&#xa0;ans », « Bac &#43;5 »).
+  return decodeHtmlEntities(text)
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();

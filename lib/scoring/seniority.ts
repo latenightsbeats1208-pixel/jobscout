@@ -135,8 +135,11 @@ export function assessSeniority(
     const reason = `trop senior : l'annonce demande ${years(fromDesc)} d'expérience, environ ${years(Math.round(profileYears))} au profil`;
     return { score: 0, factor: 1, required, profileYears, excluded: reason, note: reason };
   }
+  // Titre seul : « Senior », « Lead » pour un profil qui a 3 ans de moins. Mesuré
+  // sur un designer de 18 mois (octobre 2026) : à 0,7, les « Senior Product
+  // Designer » restaient au niveau des postes à sa portée.
   if (gap >= 3) {
-    return { score: 30, factor: 0.7, required, profileYears, excluded: null, note: "poste probablement trop senior (titre)" };
+    return { score: 30, factor: 0.55, required, profileYears, excluded: null, note: "poste probablement trop senior (titre)" };
   }
   if (gap >= 1.5) return { score: 50, factor: 0.85, required, profileYears, excluded: null, note: `expérience demandée : ${years(required)}` };
   if (gap > 0) return { score: 80, factor: 0.95, required, profileYears, excluded: null, note: `expérience demandée : ${years(required)}` };
