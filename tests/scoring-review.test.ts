@@ -135,6 +135,13 @@ describe("note et filtre de compétences", () => {
     );
   });
 
+  it("même métier mais autre spécialité (EHPAD pour une infirmière des urgences) : la note cède un peu", () => {
+    const same = aiFactor({ ...base, must_haves: [], skills_fit: 100, role_fit: 100, verdict: "postuler" });
+    const other = aiFactor({ ...base, must_haves: [], skills_fit: 100, role_fit: 80, verdict: "postuler" });
+    expect(other).toBeLessThan(same);
+    expect(other).toBeGreaterThan(aiFactor({ ...base, must_haves: [], skills_fit: 100, role_fit: 100, verdict: "hors_profil" }));
+  });
+
   it("un diplôme ou des années manquants ne comptent pas dans les compétences couvertes", () => {
     const musts = [mh("Master école de commerce", "non", "diplome"), mh("4 ans de vente B2B", "non", "experience"), mh("Prospection", "oui")];
     const r = parseReview({ verdict: "hors_profil", role_fit: 60, must_haves: musts }, meta, adWith(...musts.map((m) => m.requirement)))!;

@@ -24,7 +24,14 @@ Pour les durées, compte à partir de `date_du_jour` et de `duree_mois` : « dep
 
 ## 2. `role_fit` (0 à 100)
 
-L'offre est-elle le métier que le candidat vise (`postes_vises`) ou qu'il exerce ? 100 : même métier. 60 : métier voisin, où ses compétences servent directement. 20 : autre métier.
+L'offre est-elle le métier ET la spécialité que le candidat vise (`postes_vises`) ou qu'il exerce (expériences, résumé) ? La spécialité, c'est le cadre d'exercice : le service, le type d'établissement ou de clientèle, le type de cuisine, la technologie principale, le type de véhicule.
+
+- 100 : même métier, même spécialité ou même cadre que ce qu'il vise ou exerce.
+- 80 : même métier, autre spécialité ou autre cadre — une infirmière en EHPAD pour une infirmière des urgences, une cuisine de collectivité pour un cuisinier de restaurant, l'électricité industrielle pour un électricien du bâtiment.
+- 60 : métier voisin, où ses compétences servent directement.
+- 20 : autre métier.
+
+Une annonce qui ne précise pas son cadre (« Infirmier H/F » sans service) vaut 100 si le métier est le sien.
 
 ## 3. `verdict`
 

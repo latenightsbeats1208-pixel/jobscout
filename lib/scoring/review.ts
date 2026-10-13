@@ -12,7 +12,7 @@ import type { ProfileFull } from "@/lib/cv/types";
  */
 
 /** À changer à chaque modification du prompt ou du barème : les relectures antérieures sont alors refaites. */
-export const REVIEW_VERSION = "review-v5";
+export const REVIEW_VERSION = "review-v6";
 
 export type Coverage = "oui" | "partiel" | "non";
 export type Verdict = "postuler" | "a_tenter" | "hors_profil";
@@ -201,8 +201,17 @@ const VERDICT_FACTOR: Record<Verdict, number> = {
   hors_profil: 0.6,
 };
 
+/**
+ * Même métier, autre spécialité ou autre cadre (role_fit sous 90 depuis la
+ * consigne review-v6) : une infirmière des urgences devant un poste en EHPAD, un
+ * cuisinier de restaurant devant une cuisine de collectivité. Sur le banc
+ * marché, le chef de partie passe de 74 % à 82 % et l'infirmière de 80 % à 85 %
+ * (NDCG@20) ; moyenne 89 %, ancien banc 81 % (80 % sans IA). Plat de 0,85 à 0,95.
+ */
+const OTHER_SPECIALTY_FACTOR = 0.88;
+
 export function aiFactor(r: AiReview): number {
-  return VERDICT_FACTOR[r.verdict];
+  return VERDICT_FACTOR[r.verdict] * (r.role_fit >= 90 ? 1 : OTHER_SPECIALTY_FACTOR);
 }
 
 /**
