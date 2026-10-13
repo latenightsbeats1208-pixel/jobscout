@@ -1,9 +1,10 @@
 import "server-only";
 import type { ProfileFull } from "@/lib/cv/types";
-import { getDb, parseJson, transaction } from "@/lib/db";
+import { getDb, getSetting, parseJson, setSetting, transaction } from "@/lib/db";
+import { getProfile } from "@/lib/db/queries";
 import { setOffreScore } from "@/lib/db/offres";
 import { buildCorpus, scoreOffresLocal, type Corpus, type ScoringInput } from "./local";
-import { isReviewCurrent, offerHash, profileHash, type AiReview } from "./review";
+import { REVIEW_VERSION, isReviewCurrent, offerHash, profileHash, type AiReview } from "./review";
 
 type ScoringRow = ScoringInput & { id: number; ai_review: string | null; description_status: string };
 
@@ -47,4 +48,24 @@ export function rescoreAllOffres(profile: ProfileFull): number {
   const results = scoreOffresLocal(profile, rows, buildCorpus(rows), currentReviews(profile, rows));
   transaction(() => results.forEach((r, i) => setOffreScore(rows[i].id, r)));
   return rows.length;
+}
+
+/**
+ * À changer à chaque modification de la note locale (lib/scoring/*). Les notes
+ * sont écrites en base : sans ce repère, une mise à jour de la note ne touchait
+ * les offres déjà collectées qu'au prochain scan ou au prochain enregistrement
+ * du profil — 1 103 offres classées selon l'ancienne règle d'ici là.
+ */
+export const SCORING_VERSION = "2026-10-13";
+const SETTING = "scoring:version";
+
+/** Recalcule toutes les notes si elles datent d'une autre version de la note ou de la relecture. */
+export function ensureScoresCurrent(): boolean {
+  const version = `${SCORING_VERSION}+${REVIEW_VERSION}`;
+  if (getSetting(SETTING) === version) return false;
+  const profile = getProfile();
+  if (!profile) return false;
+  rescoreAllOffres(profile);
+  setSetting(SETTING, version);
+  return true;
 }
