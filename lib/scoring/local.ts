@@ -479,8 +479,11 @@ function scorePrepared(
   // Contrat : centré sur 50 → contrat recherché +10, inconnu 0, identifié mais non recherché −6
   const contractDelta = ((contract.score - 50) / 50) * 10;
   // Lieu : la zone choisie par la personne. Hors zone, l'offre reste visible mais
-  // passe après les offres de sa zone ; une région voisine coûte peu.
-  const zoneFactor = zone.fit === "hors" ? 0.55 : zone.fit === "proche" ? 0.85 : 1;
+  // passe après les offres de sa zone. Près de la zone (même région), elle passe
+  // après le même poste dans la zone : sur le banc marché, aucune offre « proche »
+  // n'a été jugée parfaite (note moyenne 1,6 contre 2,4 dans la zone), alors qu'à
+  // 0,85 son score ne cédait que 5 points.
+  const zoneFactor = zone.fit === "hors" ? 0.55 : zone.fit === "proche" ? 0.75 : 1;
   // Freelance pour qui cherche un salariat : visible, mais en retrait.
   const freelanceFactor = contract.freelance ? 0.75 : 1;
   let finalScore = Math.round(
