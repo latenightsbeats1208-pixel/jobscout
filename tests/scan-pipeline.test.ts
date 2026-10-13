@@ -21,10 +21,18 @@ const fake: Scraper = {
     seenCriteria.push(criteria);
     onEvent({ kind: "list", source: "hellowork", total: 4 });
     const long = (s: string) => `${s} ${"Vous rejoignez une équipe engagée au service de nos clients. ".repeat(8)}`;
-    yield offre("ok-1", "Comptable général", long("Comptable général : tenue des comptes et clôtures."));
-    yield offre("autre-1", "Tech Lead .Net (H/F)", long("Développeur Sénior - Java / VueJS (H/F) ALTECA. Chez Alteca le management est de proximité."));
-    yield offre("court-1", "Comptable fournisseurs", "Comptable fournisseurs, saisie des factures.");
-    yield offre("parasite-1", "Contrôleur de gestion", `Cette offre d'emploi n'est pas disponible dans votre pays. ${long("Contrôleur de gestion : budgets et reporting.")}`);
+    const offres = [
+      offre("ok-1", "Comptable général", long("Comptable général : tenue des comptes et clôtures.")),
+      offre("autre-1", "Tech Lead .Net (H/F)", long("Développeur Sénior - Java / VueJS (H/F) ALTECA. Chez Alteca le management est de proximité.")),
+      offre("court-1", "Comptable fournisseurs", "Comptable fournisseurs, saisie des factures."),
+      offre("parasite-1", "Contrôleur de gestion", `Cette offre d'emploi n'est pas disponible dans votre pays. ${long("Contrôleur de gestion : budgets et reporting.")}`),
+    ];
+    for (const [i, o] of offres.entries()) {
+      yield o;
+      // Comme LinkedIn et Talent.com : l'annonce suit la remise de l'offre et relit
+      // son statut, que le contrôle de qualité vient de réécrire.
+      onEvent({ kind: "offre", source: "hellowork", index: i + 1, total: 4, status: o.description_status === "failed" ? "failed" : "ok" });
+    }
   },
 };
 
@@ -64,8 +72,9 @@ describe("scan de bout en bout", () => {
     // Toutes notées en fin de scan, y compris celle à la description écartée (sur son seul titre).
     expect(rows.every((r) => typeof r.score === "number")).toBe(true);
 
-    // Les extraits comptent comme insérés ; la description d'un autre poste est un échec.
-    expect(lines).toContain("[hellowork] 4 vues, 3 insérées, 1 échecs");
+    // Les extraits comptent comme insérés ; la description d'un autre poste est un
+    // échec, compté une fois (et non deux, comme sur LinkedIn en octobre 2026).
+    expect(lines).toContain("[hellowork] 4 vues, 3 insérées, 1 échec");
     expect(lines.find((l) => l.startsWith("[hellowork] contrôle qualité"))).toMatch(/1 × description qui ne parle pas du poste du titre/);
   });
 });

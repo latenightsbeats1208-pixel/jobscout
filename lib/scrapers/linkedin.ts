@@ -13,6 +13,8 @@ type ListingCard = {
   company: string;
   location: string | null;
   posted_at: string | null;
+  /** Pays de la recherche qui a trouvé l'offre (paramètre location). */
+  searchCountry?: string | null;
 };
 
 export const linkedinScraper: Scraper = {
@@ -43,7 +45,7 @@ export const linkedinScraper: Scraper = {
             try {
               await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
               await page.waitForTimeout(400);
-              pageCards = await extractListingCards(page);
+              pageCards = (await extractListingCards(page)).map((c) => ({ ...c, searchCountry: country || null }));
             } catch {
               break;
             }
@@ -276,12 +278,7 @@ async function fetchDetail(page: any, card: ListingCard): Promise<ScrapedOffre> 
         data.ld?.jobLocation?.address?.addressLocality ||
         card.location ||
         null;
-      // Pays : JSON-LD quand il existe, sinon déduit du libellé de lieu
-      // (« Paris, Île-de-France, France » → « France »). Sans cela, 100 % des
-      // offres LinkedIn restaient sans pays et perdaient 10 points de score.
-      const country =
-        normalizeCountryName(data.ld?.jobLocation?.address?.addressCountry || null) ??
-        inferCountryFromLocation(location);
+      const country = linkedinCountry(data.ld?.jobLocation?.address?.addressCountry, location, card.searchCountry);
       const contract_type =
         data.criteria["Type d'emploi"] ||
         data.criteria["Employment type"] ||
@@ -319,7 +316,7 @@ async function fetchDetail(page: any, card: ListingCard): Promise<ScrapedOffre> 
     url: card.url,
     title: card.title || "Description non récupérée",
     company: card.company || "",
-    country: inferCountryFromLocation(card.location),
+    country: linkedinCountry(null, card.location, card.searchCountry),
     location: card.location,
     contract_type: null,
     salary: null,
@@ -331,6 +328,21 @@ async function fetchDetail(page: any, card: ListingCard): Promise<ScrapedOffre> 
     raw_payload: { jobId: card.jobId },
     scrape_errors: lastErr,
   };
+}
+
+/**
+ * Pays d'une offre : JSON-LD quand il existe, sinon le libellé de lieu (« Paris,
+ * Île-de-France, France » → « France »), sinon le pays de la recherche qui l'a
+ * trouvée. LinkedIn n'écrit que la ville quand la recherche porte déjà sur un
+ * pays (« Lyon », « Ville de Paris ») : 62 offres sur 160 restaient sans pays
+ * (octobre 2026), donc hors du filtre par pays et des doublons entre sources.
+ */
+export function linkedinCountry(
+  ldCountry: string | null | undefined,
+  location: string | null | undefined,
+  searchCountry: string | null | undefined
+): string | null {
+  return normalizeCountryName(ldCountry || null) ?? inferCountryFromLocation(location) ?? strictCountryName(searchCountry);
 }
 
 /** « Paris, Île-de-France, France » → « France » ; « Montréal, QC, Canada » → « Canada ». */

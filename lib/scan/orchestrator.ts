@@ -157,15 +157,21 @@ export async function* runScan(
       yield { kind: "error", source: scraper.name, message: fatal };
     }
     const views = seen || okCount + failCount;
+    // Échecs = vues − insérées. Compter les annonces « failed » de la source ne
+    // marche pas : LinkedIn et Talent.com annoncent l'offre APRÈS l'avoir rendue,
+    // en relisant son statut que le contrôle de qualité vient de réécrire, et
+    // une offre écartée par le contrôle comptait deux fois (« 160 vues, 159
+    // insérées, 2 échecs », octobre 2026).
+    const failed = seen ? Math.max(0, seen - okCount) : failCount;
     // Le bilan dit la cause : sans elle, une source qui plante dès le départ
     // (moteur absent, API HS) laissait « 0 vues, 0 échecs » et un scan « terminé ».
     if (fatal) {
-      say(views ? `[${scraper.name}] interrompue après ${views} vues, ${okCount} insérées : ${fatal}` : `[${scraper.name}] échec : ${fatal}`);
+      say(views ? `[${scraper.name}] interrompue après ${count(views, "vue")}, ${count(okCount, "insérée")} : ${fatal}` : `[${scraper.name}] échec : ${fatal}`);
     } else {
-      say(`[${scraper.name}] ${views} vues, ${okCount} insérées, ${failCount} échecs`);
+      say(`[${scraper.name}] ${count(views, "vue")}, ${count(okCount, "insérée")}, ${count(failed, "échec")}`);
     }
     // Rien d'exploitable alors que la source répondait : elle a échoué aussi.
-    const empty = !fatal && okCount === 0 && failCount > 0;
+    const empty = !fatal && okCount === 0 && failed > 0;
     if (fatal || empty) {
       failures.push({ source: scraper.name, message: fatal ?? "aucune offre exploitable" });
       if (okCount === 0) failedSources++;
@@ -229,6 +235,11 @@ export async function* runScan(
     runId
   );
   yield { kind: "global-done", total_inserted: totalInserted, status, failures };
+}
+
+/** « 0 échec », « 1 vue », « 12 insérées » : zéro et un prennent le singulier. */
+function count(n: number, word: string): string {
+  return `${n} ${word}${n > 1 ? "s" : ""}`;
 }
 
 async function scoreBatch(

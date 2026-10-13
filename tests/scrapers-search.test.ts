@@ -240,3 +240,17 @@ describe("France Travail (pages publiques)", () => {
     ]);
   });
 });
+
+describe("LinkedIn", () => {
+  it("pays : JSON-LD, puis libellé de lieu, puis pays de la recherche (lieu réduit à la ville)", async () => {
+    const { linkedinCountry } = await import("@/lib/scrapers/linkedin");
+    expect(linkedinCountry(null, "Lyon", "France")).toBe("France");
+    expect(linkedinCountry(null, "Ville de Paris", "France")).toBe("France");
+    expect(linkedinCountry(null, "Région métropolitaine de Kansas City", "États-Unis")).toBe("États-Unis");
+    // Le libellé de lieu et le JSON-LD l'emportent sur la recherche.
+    expect(linkedinCountry(null, "Paris, Île-de-France, France", "Suisse")).toBe("France");
+    expect(linkedinCountry("CH", "Genève", "France")).toBe("Suisse");
+    // Recherche sans pays : rien n'est deviné.
+    expect(linkedinCountry(null, "Lyon et périphérie", null)).toBeNull();
+  });
+});
