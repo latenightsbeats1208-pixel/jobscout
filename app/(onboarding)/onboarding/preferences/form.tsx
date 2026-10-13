@@ -12,6 +12,7 @@ import { SearchAreaSelect } from "@/components/app/search-area";
 import { COUNTRY_GROUPS, FRANCOPHONIE } from "@/lib/countries";
 import { SOURCES_META, DEFAULT_SOURCE_IDS } from "@/lib/sources-meta";
 import { EngineNotice } from "@/components/app/engine-notice";
+import { TitleSuggestions } from "@/components/app/title-suggestions";
 const SOURCES = SOURCES_META;
 
 export function PreferencesForm() {
@@ -135,6 +136,11 @@ export function PreferencesForm() {
             <Plus className="h-4 w-4" /> Ajouter
           </Button>
         </div>
+        <TitleSuggestions
+          profile={profile}
+          current={profile.target_titles}
+          onAdd={(title) => update({ target_titles: [...profile.target_titles, title] })}
+        />
       </Card>
 
       <Card>

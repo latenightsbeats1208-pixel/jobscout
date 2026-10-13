@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Chip } from "@/components/ui/chip";
 import { Spinner } from "@/components/ui/spinner";
 import { SearchAreaSelect, SearchPlanPreview } from "@/components/app/search-area";
+import { TitleSuggestions } from "@/components/app/title-suggestions";
 import { cn } from "@/lib/utils";
 import { COUNTRY_GROUPS } from "@/lib/countries";
 import { SOURCES_META } from "@/lib/sources-meta";
@@ -304,9 +305,16 @@ function SearchCard({
         onChange={(target_titles) => update({ target_titles })}
         placeholder="Ex. Business Analyst, Développeur .NET…"
       />
-      <p className="text-small text-textSecondary mt-2 mb-4">
+      <p className="text-small text-textSecondary mt-2">
         Chaque source cherche ces intitulés, et chaque offre est notée d'abord sur la proximité de son titre avec eux.
       </p>
+      <div className="mb-4">
+        <TitleSuggestions
+          profile={profile}
+          current={profile.target_titles ?? []}
+          onAdd={(title) => update({ target_titles: [...(profile.target_titles ?? []), title] })}
+        />
+      </div>
 
       <p className="text-caption uppercase text-textSecondary mb-2">Secteurs</p>
       <div className="flex flex-wrap gap-1.5 mb-2">
