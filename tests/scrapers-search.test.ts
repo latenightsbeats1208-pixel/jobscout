@@ -124,6 +124,15 @@ describe("Talent.com", () => {
     expect(offres.filter((o) => o.title.startsWith("Comptable"))).toHaveLength(10);
   });
 
+  it("cherche aussi hors de la francophonie : Pays-Bas, Royaume-Uni (banc marché : 1 offre néerlandaise sur 184)", async () => {
+    respond = talentResponder;
+    const { talentScraper } = await import("@/lib/scrapers/talent");
+    const offres = await collect(talentScraper.scrape(criteria({ countries: ["Pays-Bas", "Royaume-Uni"], maxOffres: 20 }), () => {}));
+    const hosts = new Set(requests.filter((r) => new URL(r).pathname === "/jobs").map((r) => new URL(r).hostname));
+    expect(hosts).toEqual(new Set(["nl.talent.com", "uk.talent.com"]));
+    expect(new Set(offres.map((o) => o.country))).toEqual(new Set(["Pays-Bas", "Royaume-Uni"]));
+  });
+
   // L'ancienne lecture cherchait entreprise et lieu dans des <p> : aucun lieu sur
   // 225 offres, et le nom de l'entreprise pris pour le contrat.
   it("lit l'entreprise, le lieu, le contrat, la date et le lien de la carte", async () => {

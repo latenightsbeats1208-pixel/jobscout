@@ -16,8 +16,10 @@ import {
 
 const SOURCE = "talent";
 
-// Talent.com a un sous-domaine par pays, avec le même markup SSR.
-// Tous vérifiés fonctionnels (août 2026). Couverture francophonie + Amérique du Nord.
+// Talent.com a un sous-domaine par pays, avec le même markup SSR. Tous vérifiés
+// (cartes et adresses présentes) en octobre 2026 ; ie.talent.com répond sans
+// aucune carte et n'y est pas. Seuls 9 pays y figuraient jusque-là : un profil
+// qui visait les Pays-Bas ne recevait qu'une offre néerlandaise (banc marché).
 const DOMAINS: { host: string; country: string; codes: string[] }[] = [
   { host: "fr.talent.com", country: "France", codes: ["FR"] },
   { host: "be.talent.com", country: "Belgique", codes: ["BE"] },
@@ -28,6 +30,61 @@ const DOMAINS: { host: string; country: string; codes: string[] }[] = [
   { host: "ma.talent.com", country: "Maroc", codes: ["MA"] },
   { host: "tn.talent.com", country: "Tunisie", codes: ["TN"] },
   { host: "sn.talent.com", country: "Sénégal", codes: ["SN"] },
+  { host: "de.talent.com", country: "Allemagne", codes: ["DE"] },
+  { host: "nl.talent.com", country: "Pays-Bas", codes: ["NL"] },
+  { host: "uk.talent.com", country: "Royaume-Uni", codes: ["GB"] },
+  { host: "es.talent.com", country: "Espagne", codes: ["ES"] },
+  { host: "pt.talent.com", country: "Portugal", codes: ["PT"] },
+  { host: "it.talent.com", country: "Italie", codes: ["IT"] },
+  { host: "at.talent.com", country: "Autriche", codes: ["AT"] },
+  { host: "se.talent.com", country: "Suède", codes: ["SE"] },
+  { host: "no.talent.com", country: "Norvège", codes: ["NO"] },
+  { host: "dk.talent.com", country: "Danemark", codes: ["DK"] },
+  { host: "fi.talent.com", country: "Finlande", codes: ["FI"] },
+  { host: "pl.talent.com", country: "Pologne", codes: ["PL"] },
+  { host: "cz.talent.com", country: "Tchéquie", codes: ["CZ"] },
+  { host: "hu.talent.com", country: "Hongrie", codes: ["HU"] },
+  { host: "ro.talent.com", country: "Roumanie", codes: ["RO"] },
+  { host: "ua.talent.com", country: "Ukraine", codes: ["UA"] },
+  { host: "gr.talent.com", country: "Grèce", codes: ["GR"] },
+  { host: "tr.talent.com", country: "Turquie", codes: ["TR"] },
+  { host: "mx.talent.com", country: "Mexique", codes: ["MX"] },
+  { host: "br.talent.com", country: "Brésil", codes: ["BR"] },
+  { host: "ar.talent.com", country: "Argentine", codes: ["AR"] },
+  { host: "cl.talent.com", country: "Chili", codes: ["CL"] },
+  { host: "co.talent.com", country: "Colombie", codes: ["CO"] },
+  { host: "pe.talent.com", country: "Pérou", codes: ["PE"] },
+  { host: "uy.talent.com", country: "Uruguay", codes: ["UY"] },
+  { host: "cr.talent.com", country: "Costa Rica", codes: ["CR"] },
+  { host: "pa.talent.com", country: "Panama", codes: ["PA"] },
+  { host: "ec.talent.com", country: "Équateur", codes: ["EC"] },
+  { host: "cn.talent.com", country: "Chine", codes: ["CN"] },
+  { host: "hk.talent.com", country: "Hong Kong", codes: ["HK"] },
+  { host: "sg.talent.com", country: "Singapour", codes: ["SG"] },
+  { host: "jp.talent.com", country: "Japon", codes: ["JP"] },
+  { host: "kr.talent.com", country: "Corée du Sud", codes: ["KR"] },
+  { host: "tw.talent.com", country: "Taïwan", codes: ["TW"] },
+  { host: "in.talent.com", country: "Inde", codes: ["IN"] },
+  { host: "vn.talent.com", country: "Vietnam", codes: ["VN"] },
+  { host: "th.talent.com", country: "Thaïlande", codes: ["TH"] },
+  { host: "id.talent.com", country: "Indonésie", codes: ["ID"] },
+  { host: "my.talent.com", country: "Malaisie", codes: ["MY"] },
+  { host: "ph.talent.com", country: "Philippines", codes: ["PH"] },
+  { host: "ae.talent.com", country: "Émirats arabes unis", codes: ["AE"] },
+  { host: "qa.talent.com", country: "Qatar", codes: ["QA"] },
+  { host: "sa.talent.com", country: "Arabie saoudite", codes: ["SA"] },
+  { host: "bh.talent.com", country: "Bahreïn", codes: ["BH"] },
+  { host: "kw.talent.com", country: "Koweït", codes: ["KW"] },
+  { host: "om.talent.com", country: "Oman", codes: ["OM"] },
+  { host: "il.talent.com", country: "Israël", codes: ["IL"] },
+  { host: "lb.talent.com", country: "Liban", codes: ["LB"] },
+  { host: "eg.talent.com", country: "Égypte", codes: ["EG"] },
+  { host: "za.talent.com", country: "Afrique du Sud", codes: ["ZA"] },
+  { host: "ng.talent.com", country: "Nigéria", codes: ["NG"] },
+  { host: "ke.talent.com", country: "Kenya", codes: ["KE"] },
+  { host: "gh.talent.com", country: "Ghana", codes: ["GH"] },
+  { host: "au.talent.com", country: "Australie", codes: ["AU"] },
+  { host: "nz.talent.com", country: "Nouvelle-Zélande", codes: ["NZ"] },
 ];
 
 // Structure (vérifiée avril 2026) : Next.js SSR.
@@ -120,16 +177,20 @@ function parseSearchPage(html: string, domain: Domain): Card[] {
       if (icon.closest("header")) continue;
       const label = icon.getAttribute("title")?.trim() ?? "";
       if (!label || NOT_CONTRACT.test(label)) continue;
-      if (label.includes("€")) salary ??= label;
+      // Un montant, quelle que soit la devise (« 45 000 € », « £40,000 », « $60k »).
+      if (/[€£$¥₹]|\d/.test(label)) salary ??= label;
       else contract ??= label;
     }
 
     let snippet = "";
     for (const el of Array.from(card.querySelectorAll("p"))) {
       if (el.closest("header")) continue;
-      const t = el.textContent?.trim() ?? "";
+      // Le lien « Voir plus » (« See more », « Meer »… selon le domaine) n'est pas l'annonce.
+      const more = el.querySelector("a")?.textContent?.trim() ?? "";
+      let t = el.textContent?.trim() ?? "";
+      if (more && t.endsWith(more)) t = t.slice(0, -more.length).trim();
       if (t.length > 50) {
-        snippet = t.replace(/\s*Voir plus$/, "").replace(/\.{3}$/, "…");
+        snippet = t.replace(/\.{3}$/, "…");
         break;
       }
     }
