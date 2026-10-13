@@ -235,3 +235,73 @@ export const MARKET_PROFILES: MarketProfile[] = [
     }),
   },
 ];
+
+/**
+ * Profils de contrôle, créés APRÈS la mise au point des règles sur les douze
+ * premiers : leur mesure dit si les règles valent au-delà des cas qui les ont
+ * inspirées. On ne règle rien sur eux.
+ */
+export const HOLDOUT_PROFILES: MarketProfile[] = [
+  {
+    key: "technicien-maintenance",
+    label: "Technicien de maintenance industrielle, 5 ans, BTS, Grenoble",
+    profile: p({
+      summary: "Technicien de maintenance en industrie agroalimentaire : dépannage électrique et mécanique, maintenance préventive, GMAO.",
+      target_titles: ["Technicien de maintenance", "Technicien de maintenance industrielle"],
+      search_area: "D:38",
+      experiences: [
+        { title: "Technicien de maintenance", company: "Usine agroalimentaire", start_date: "2021-03", end_date: "present", bullet_points: ["Dépannage électrique et mécanique des lignes de production", "Maintenance préventive sur GMAO", "Lecture de schémas électriques et pneumatiques"], skills_used: ["Électrotechnique", "Automatisme", "GMAO", "Pneumatique"] },
+      ],
+      educations: [{ school: "Lycée technique", degree: "BTS", field: "Maintenance des systèmes", start_date: "2019-09", end_date: "2021-06" }],
+      skills: skills(["Électrotechnique", "Mécanique", "Automatismes Siemens", "Pneumatique", "Hydraulique", "GMAO", "Habilitation électrique BR"]),
+      languages: [fr, { name: "Anglais", level: "A2" }],
+    }),
+  },
+  {
+    key: "charge-rh",
+    label: "Chargée RH généraliste, 3 ans, Master RH, Toulouse",
+    profile: p({
+      summary: "Chargée de ressources humaines : recrutement, administration du personnel, paie et relations avec les représentants du personnel.",
+      target_titles: ["Chargé de ressources humaines", "Chargé RH", "Chargé de recrutement"],
+      search_area: "D:31",
+      experiences: [
+        { title: "Chargée RH", company: "PME industrielle", start_date: "2023-02", end_date: "present", bullet_points: ["Recrutement des postes ouvriers et techniciens", "Administration du personnel et variables de paie", "Préparation des réunions du CSE"], skills_used: ["Recrutement", "Administration du personnel", "Paie", "Droit du travail"] },
+        { title: "Alternante RH", company: "Groupe de services", start_date: "2021-09", end_date: "2023-01", bullet_points: ["Onboarding des nouveaux salariés"], skills_used: ["Onboarding"] },
+      ],
+      educations: [{ school: "IAE Toulouse", degree: "Master", field: "Gestion des ressources humaines", start_date: "2021-09", end_date: "2023-06" }],
+      skills: skills(["Recrutement", "Administration du personnel", "Paie", "Droit du travail", "SIRH", "Gestion des entretiens annuels", "Excel"]),
+      languages: [fr, { name: "Anglais", level: "B2" }],
+    }),
+  },
+  {
+    key: "preparatrice-pharmacie",
+    label: "Préparatrice en pharmacie, 6 ans, BP, Montpellier",
+    profile: p({
+      summary: "Préparatrice en pharmacie d'officine : délivrance des ordonnances, conseil, gestion des stocks et préparations.",
+      target_titles: ["Préparateur en pharmacie"],
+      search_area: "D:34",
+      experiences: [
+        { title: "Préparatrice en pharmacie", company: "Pharmacie d'officine", start_date: "2020-09", end_date: "present", bullet_points: ["Délivrance des ordonnances et conseil", "Gestion des commandes et des stocks", "Préparations magistrales"], skills_used: ["Délivrance d'ordonnances", "Conseil officinal", "Gestion des stocks", "LGO"] },
+      ],
+      educations: [{ school: "CFA pharmacie", degree: "Brevet professionnel", field: "Préparateur en pharmacie", start_date: "2018-09", end_date: "2020-06" }],
+      skills: skills(["Délivrance d'ordonnances", "Conseil officinal", "Préparations magistrales", "Gestion des stocks", "Tiers payant", "Logiciel LGO"]),
+      languages: [fr],
+    }),
+  },
+  {
+    key: "cariste",
+    label: "Cariste préparateur de commandes, 4 ans, CACES, Orléans",
+    profile: p({
+      summary: "Cariste et préparateur de commandes en entrepôt logistique, CACES R489 catégories 1, 3 et 5.",
+      target_titles: ["Cariste", "Préparateur de commandes"],
+      search_area: "D:45",
+      experiences: [
+        { title: "Cariste préparateur de commandes", company: "Entrepôt logistique", start_date: "2022-05", end_date: "present", bullet_points: ["Préparation de commandes au scanner", "Chargement et déchargement des camions", "Réapprovisionnement des allées en hauteur"], skills_used: ["CACES R489", "Préparation de commandes", "Gestion des stocks"] },
+      ],
+      educations: [{ school: "Centre de formation", degree: "CACES", field: "R489 catégories 1, 3 et 5", start_date: "2022-01", end_date: "2022-02" }],
+      skills: skills(["CACES R489 cat. 1", "CACES R489 cat. 3", "CACES R489 cat. 5", "Préparation de commandes", "Gestion des stocks", "Inventaire"]),
+      languages: [fr],
+    }),
+  },
+];
+

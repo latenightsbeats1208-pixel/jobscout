@@ -4,6 +4,7 @@ import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./bas
 import { htmlToText } from "./base";
 import { detectVie } from "@/lib/vie";
 import { normalizeCountryName, nameToCode } from "@/lib/countries";
+import { DEPARTEMENTS, type SearchArea } from "@/lib/geo/fr";
 
 /**
  * Welcome to the Jungle via son index de recherche public (Algolia) — le même
@@ -133,8 +134,33 @@ function toScraped(h: Hit): ScrapedOffre | null {
   };
 }
 
-async function searchPage(query: string, page: number): Promise<{ hits: Hit[]; nbPages: number }> {
+/** Noms de département de l'index qui diffèrent des nôtres (relevés en octobre 2026). */
+const INDEX_DISTRICT: Record<string, string> = { "06": "Maritime Alps", "974": "Réunion" };
+
+/**
+ * Filtre de lieu de l'index : les départements de la zone (« offices.district »),
+ * les offres en télétravail complet, et les offres des autres pays visés — la
+ * zone ne vaut que pour la France. Les noms de région de l'index sont
+ * irréguliers (« Brittany », « Loire Region ») : une région passe par la liste
+ * de ses départements.
+ */
+export function wttjAreaFilter(area: SearchArea, otherCountryCodes: string[], scope: "zone" | "region" = "zone"): string {
+  const regionCode = area.kind === "region" ? area.code : DEPARTEMENTS.find((d) => d.code === area.code)?.region;
+  const depts =
+    area.kind === "departement" && scope === "zone"
+      ? DEPARTEMENTS.filter((d) => d.code === area.code)
+      : DEPARTEMENTS.filter((d) => d.region === regionCode);
+  const quote = (v: string) => `"${v.replace(/"/g, '\\"')}"`;
+  return [
+    ...depts.map((d) => `offices.district:${quote(INDEX_DISTRICT[d.code] ?? d.name)}`),
+    'remote:"fulltime"',
+    ...otherCountryCodes.map((c) => `offices.country_code:${quote(c)}`),
+  ].join(" OR ");
+}
+
+async function searchPage(query: string, page: number, filters?: string): Promise<{ hits: Hit[]; nbPages: number }> {
   const params = new URLSearchParams({ query, hitsPerPage: String(HITS_PER_PAGE), page: String(page) });
+  if (filters) params.set("filters", filters);
   const res = await fetch(ALGOLIA_URL, {
     method: "POST",
     headers: {
@@ -173,23 +199,46 @@ export const wttjScraper: Scraper = {
     // 1. Collecte via l'index : une recherche par poste visé, 2 pages max. Chaque
     //    requête garde sa part, ses offres les plus récentes d'abord : un tri par
     //    date sur l'ensemble laissait une requête très active évincer les autres.
-    //    Pas de zone : l'index n'a pas de paramètre de lieu connu.
+    //    Zone : filtre sur les départements de l'index. Sans lui, les offres de
+    //    tout le pays remplissaient la part (une infirmière de Lyon recevait
+    //    Cherbourg et Colmar). Un département trop maigre s'élargit à sa région.
+    const otherCodes = [...targetCodes].filter((c) => c !== "FR");
+    const scopes: (string | undefined)[] = criteria.area
+      ? [wttjAreaFilter(criteria.area, otherCodes), ...(criteria.area.kind === "departement" ? [wttjAreaFilter(criteria.area, otherCodes, "region")] : [])]
+      : [undefined];
     const seen = new Set<string>();
     const picked: Hit[] = [];
     let apiError: string | null = null;
     for (const q of queries) {
       const own: Hit[] = [];
-      for (let page = 0; page < PAGES_PER_QUERY; page++) {
-        try {
-          const { hits, nbPages } = await searchPage(q, page);
-          for (const h of hits) if (h?.objectID && !seen.has(h.objectID) && inCountries(h)) own.push(h);
-          if (page + 1 >= nbPages) break;
-        } catch (e) {
-          apiError = e instanceof Error ? e.message : String(e);
-          break;
+      const ownIds = new Set<string>();
+      // Rang de la portée : le département passe avant sa région élargie.
+      const scopeOf = new Map<string, number>();
+      for (const [scopeIndex, filters] of scopes.entries()) {
+        if (own.length >= quota) break;
+        for (let page = 0; page < PAGES_PER_QUERY; page++) {
+          try {
+            const { hits, nbPages } = await searchPage(q, page, filters);
+            for (const h of hits) {
+              if (h?.objectID && !seen.has(h.objectID) && !ownIds.has(h.objectID) && inCountries(h)) {
+                own.push(h);
+                ownIds.add(h.objectID);
+                scopeOf.set(h.objectID, scopeIndex);
+              }
+            }
+            if (page + 1 >= nbPages) break;
+          } catch (e) {
+            apiError = e instanceof Error ? e.message : String(e);
+            break;
+          }
         }
+        if (apiError) break;
       }
-      own.sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""));
+      own.sort(
+        (a, b) =>
+          (scopeOf.get(a.objectID) ?? 0) - (scopeOf.get(b.objectID) ?? 0) ||
+          (b.published_at ?? "").localeCompare(a.published_at ?? "")
+      );
       for (const h of own.slice(0, quota)) {
         seen.add(h.objectID);
         picked.push(h);

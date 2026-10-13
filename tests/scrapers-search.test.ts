@@ -183,6 +183,33 @@ describe("Welcome to the Jungle", () => {
   });
 });
 
+describe("Welcome to the Jungle : zone", () => {
+  it("filtre sur le département, puis sa région quand il est trop maigre ; les autres pays visés restent", async () => {
+    const filters: string[] = [];
+    respond = async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as { requests: { params: string }[] };
+      const params = new URLSearchParams(body.requests[0].params);
+      const f = params.get("filters") ?? "";
+      filters.push(f);
+      // Département : 2 offres seulement ; région : 30.
+      const n = f.includes('"Rhône"') && !f.includes('"Ain"') ? 2 : 30;
+      const hits = Array.from({ length: n }, (_, i) => ({
+        objectID: `${n}-${i}`, slug: `${n}-${i}`, name: "Comptable H/F", published_at: "2026-10-01", contract_type: "full_time",
+        organization: { name: "Exemple", slug: "exemple" }, offices: [{ city: n === 2 ? "Lyon" : "Grenoble", country: "France", country_code: "FR" }],
+        summary: detailText("Comptable"),
+      }));
+      return new Response(JSON.stringify({ results: [{ hits, nbPages: 1 }] }), { headers: { "content-type": "application/json" } });
+    };
+    const { wttjScraper } = await import("@/lib/scrapers/wttj");
+    const offres = await collect(wttjScraper.scrape(criteria({ queries: ["Comptable"], countries: ["France", "Suisse"], maxOffres: 10 }), () => {}));
+    expect(filters[0]).toBe('offices.district:"Rhône" OR remote:"fulltime" OR offices.country_code:"CH"');
+    expect(filters[1]).toContain('offices.district:"Isère"'); // élargi à Auvergne-Rhône-Alpes
+    // Les offres du département d'abord, puis la région pour compléter la part.
+    expect(offres.slice(0, 2).map((o) => o.location)).toEqual(["Lyon", "Lyon"]);
+    expect(offres).toHaveLength(10);
+  });
+});
+
 describe("France Travail (pages publiques)", () => {
   // Carte réelle d'une offre anonyme (octobre 2026) : le département en tête de ligne, sans entreprise.
   const card = (id: string, subtext: string, date: string) => `
