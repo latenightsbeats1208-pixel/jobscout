@@ -112,3 +112,22 @@ describe("table des communes", () => {
     expect(locateFr("Lyon")?.candidates).toBeUndefined();
   });
 });
+
+describe("langage principal", () => {
+  it("un poste dans un autre langage recule, et la raison le dit (cas réel : Java pour un développeur .NET)", () => {
+    const dotnet = {
+      full_name: null, email: null, phone: null, location: null, linkedin_url: null, portfolio_url: null, summary: null, raw_cv_text: null,
+      sectors: [], target_titles: ["Développeur Full Stack .NET"], target_countries: ["France"], search_area: "", sources_enabled: [],
+      preferred_contracts: ["cdi"], extraction_confidence: 90,
+      experiences: [{ title: "Développeur .NET", company: "ESN", start_date: "2020-01", end_date: "present", bullet_points: [], skills_used: ["C#", ".NET", "Angular"] }],
+      educations: [], skills: [{ name: "C#", evidence_experience_ids: [] }, { name: "Angular", evidence_experience_ids: [] }], languages: [{ name: "Français", level: "Natif" }],
+    } as unknown as ProfileFull;
+    const ad = (title: string) => ({ title, company: "Banque", country: "France", contract_type: "CDI", description_text: "Développement d'applications web Angular pour les services financiers." });
+    const same = scoreOffreLocal(dotnet, ad("Développeur Full Stack .NET Angular"));
+    const other = scoreOffreLocal(dotnet, ad("Développeur Full Stack Java Angular"));
+    expect(other.score).toBeLessThan(same.score - 10);
+    expect(other.reason).toMatch(/autre langage \(Java\)/);
+    // Sans langage dans le titre, rien ne change.
+    expect(scoreOffreLocal(dotnet, ad("Développeur Full Stack")).reason).not.toMatch(/autre langage/);
+  });
+});

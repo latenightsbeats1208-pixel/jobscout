@@ -239,6 +239,28 @@ function titleSimilarity(target: string[], offer: string[], vocabulary: Set<stri
   return (5 * precision * recall) / (4 * precision + recall);
 }
 
+/**
+ * Langages principaux, par famille : deux familles ne se remplacent pas. Un
+ * « Développeur Full Stack Java » partage « développeur full stack » avec le
+ * poste visé d'un développeur .NET, et le rappel des intitulés le plaçait 6e et
+ * 7e de sa liste, jugé hors sujet (ancien banc). Titre × 0,5 : NDCG@20 de ce
+ * profil de 69 % à 76 %, sans effet sur les 16 profils du banc marché.
+ */
+const STACK_FAMILY: Record<string, string> = {
+  java: "Java", kotlin: "Java", dotnet: ".NET", csharp: ".NET", php: "PHP", python: "Python", ruby: "Ruby",
+  golang: "Go", scala: "Scala", swift: "Swift", cobol: "COBOL", rust: "Rust", "c++": "C++", abap: "ABAP",
+};
+const STACK_CONFLICT_FACTOR = 0.5;
+
+/** Le titre nomme un langage que le profil ne pratique pas, alors qu'il en pratique un autre : lequel. */
+function stackConflict(p: PreparedProfile, o: PreparedOffer): string | null {
+  const offered = new Set(o.titleTokens.map((t) => STACK_FAMILY[t]).filter(Boolean));
+  if (!offered.size) return null;
+  const known = new Set([...p.vocabulary].map((t) => STACK_FAMILY[t]).filter(Boolean));
+  if (!known.size || [...offered].some((f) => known.has(f))) return null;
+  return [...offered][0];
+}
+
 function scoreTitle(p: PreparedProfile, o: PreparedOffer, corpus: Corpus): { score: number; best: string | null } {
   if (!p.targets.length) return { score: 50, best: null };
   let score = 0;
@@ -440,7 +462,9 @@ function scorePrepared(
   // elle ne remplace pas la note locale, et la raison le dit.
   const shortAd = !!rawReview && !isReviewUsable(rawReview);
   const review = shortAd ? null : rawReview;
-  const title = scoreTitle(p, o, corpus);
+  const rawTitle = scoreTitle(p, o, corpus);
+  const otherStack = stackConflict(p, o);
+  const title = otherStack ? { ...rawTitle, score: Math.round(rawTitle.score * STACK_CONFLICT_FACTOR) } : rawTitle;
   const skills = scoreSkills(p, o, corpus);
   const keywords = scoreKeywords(p, o);
   const country = scoreCountry(profile.target_countries, offre.country);
@@ -508,6 +532,7 @@ function scorePrepared(
       parts.push("aucune compétence du profil reconnue dans l'annonce");
     }
   }
+  if (otherStack) parts.push(`autre langage (${otherStack})`);
   if (zone.fit === "hors") parts.push(`hors de votre zone (${zone.place})`);
   else if (zone.fit === "proche") parts.push(`près de votre zone (${zone.place})`);
   if (contract.freelance) parts.push("freelance");
