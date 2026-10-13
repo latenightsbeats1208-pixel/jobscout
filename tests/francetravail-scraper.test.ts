@@ -112,6 +112,10 @@ describe("France Travail (pages HTML, sans clé d'API) — description de chaque
     expect(unexpected).toEqual([]);
   });
 
+  it("chaque offre porte le contrat de sa carte (<p class=\"contrat\">), jamais vide", () => {
+    for (const o of offres) expect(o.contract_type, o.source_id).toMatch(/^(CDI|CDD)$/);
+  });
+
   it("aucune description n'est celle d'une autre offre ni un texte de la page de résultats", () => {
     for (const o of offres) {
       expect(o.description_html, o.source_id).not.toMatch(/data-id-offre|media-heading/);
@@ -133,6 +137,7 @@ describe("France Travail (pages HTML, sans clé d'API) — description de chaque
     expect(o.description_text).toContain("Compétences : Concevoir une application web, Application web");
     expect(o.description_html).toContain("Tech &amp; Product");
     expect(o.salary).toBe("Annuel de 50000.0 Euros à 60000.0 Euros");
+    expect(o.contract_type).toBe("CDI"); // « CDI - Contrat travail » du JSON
     // Le JSON suffit : la page de détail n'est pas téléchargée.
     expect(requested).not.toContain("/offres/recherche/detail/900AAAA");
   });

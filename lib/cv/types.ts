@@ -59,7 +59,7 @@ export const ProfileSchema = z.object({
   search_area: z.string().default(""),
   sources_enabled: z.array(z.string()).default([]),
   preferred_contracts: z
-    .array(z.enum(["cdi", "cdd", "vie", "stage", "alternance"]))
+    .array(z.enum(["cdi", "cdd", "interim", "vie", "stage", "alternance"]))
     .default(["cdi", "cdd"]),
   extraction_confidence: z.number().min(0).max(100).default(0),
   created_at: z.string().optional(),

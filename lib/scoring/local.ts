@@ -386,7 +386,8 @@ function scoreContract(
   // Le contrat de la source ou le titre disent l'offre ; la description, elle,
   // mentionne aussi « stage » ou « alternance » dans des annonces de CDI.
   const declared = normalize(`${offre.contract_type ?? ""} ${offre.title}`);
-  const freelance = /\b(freelance|independant|auto entrepreneur|portage salarial)\b/.test(declared.replace(/[^a-z]+/g, " "));
+  // « Profession libérale - Emploi non salarié », « Franchise - … » : libellés de France Travail.
+  const freelance = /\b(freelance|independant|auto entrepreneur|portage salarial|emploi non salarie)\b/.test(declared.replace(/[^a-z]+/g, " "));
   const training =
     (category === "stage" && /\b(stage|stagiaire|internship|intern)\b/.test(declared)) ||
     (category === "alternance" && /\b(alternance|alternant|apprentissage|apprenti|contrat pro)\b/.test(declared));

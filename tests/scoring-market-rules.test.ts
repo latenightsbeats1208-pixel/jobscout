@@ -85,5 +85,14 @@ describe("contrat et lieu dans la note", () => {
     expect(far.score).toBeLessThan(here * 0.7);
     expect(far.reason).toMatch(/hors de votre zone \(Lille\)/);
     expect(scoreOffreLocal(profile, offer({ contract_type: "Freelance" })).score).toBeLessThan(here);
+    expect(scoreOffreLocal(profile, offer({ contract_type: "Profession libérale - Emploi non salarié" })).reason).toMatch(/freelance/);
+  });
+
+  it("l'intérim, accepté mais pas demandé, passe derrière le même poste en CDI", () => {
+    const cdi = scoreOffreLocal(profile, offer({}));
+    const interim = scoreOffreLocal(profile, offer({ contract_type: "Intérim - 6 Mois" }));
+    expect(interim.breakdown.contract).toBe(20);
+    expect(interim.score).toBeLessThan(cdi.score - 10);
+    expect(scoreOffreLocal({ ...profile, preferred_contracts: ["cdi", "interim"] }, offer({ contract_type: "Intérim" })).breakdown.contract).toBe(100);
   });
 });

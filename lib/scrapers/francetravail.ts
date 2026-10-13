@@ -217,8 +217,14 @@ function parseHtmlSearch(html: string): HtmlCard[] {
       if (city && /^\d{2,3}$/.test(city) && parts.length >= 3) city = parts[2];
     }
 
-    const dd = li.querySelector("dd")?.textContent?.trim() ?? "";
-    const contract = dd ? dd.split(" - ")[0].trim() : null;
+    // « <p class="contrat">Intérim<span class="type-contrat">Temps plein</span> » :
+    // le premier nœud texte est le contrat (relevé en octobre 2026 ; l'ancien
+    // gabarit le rangeait dans un <dd> « CDD - 6 Mois »).
+    const contractEl = li.querySelector("p.contrat");
+    const contractText = contractEl
+      ? Array.from(contractEl.childNodes).find((n) => n.nodeType === 3 && n.textContent?.trim())?.textContent
+      : li.querySelector("dd")?.textContent;
+    const contract = contractText?.split(" - ")[0].trim() || null;
 
     const snippet = Array.from(li.querySelectorAll("p"))
       .filter((p) => !/subtext|date|contrat/.test(p.getAttribute("class") ?? ""))
@@ -248,7 +254,9 @@ async function fetchHtmlPage(keywords: string, page: number, area?: SearchArea |
 
 // Description lue pour une offre, ou motif de rejet quand la réponse décrit
 // autre chose que l'offre demandée (offre voisine, page de résultats).
-type Detail = { html: string; text: string; salary: string | null; posted_at?: string | null } | { rejected: string };
+type Detail =
+  | { html: string; text: string; salary: string | null; posted_at?: string | null; contract?: string | null }
+  | { rejected: string };
 
 type FtDescriptif = {
   numeroOffre?: string | null;
@@ -257,6 +265,8 @@ type FtDescriptif = {
   listeCompetence?: { libelleCompetence?: string | null }[] | null;
   /** « 24 septembre 2026 » : la date « Actualisé le » du site. */
   dateDerniereModification?: string | null;
+  /** « Intérim - 18 Mois - Contrat travail », « CDD - 24 Mois - Contrat apprentissage ». */
+  syntheseContrat?: string | null;
 };
 
 async function fetchDescriptif(id: string): Promise<Detail | null> {
@@ -282,6 +292,9 @@ async function fetchDescriptif(id: string): Promise<Detail | null> {
       text,
       salary: data.salaire?.trim() || null,
       posted_at: parseFrenchDate(data.dateDerniereModification),
+      // La synthèse dit aussi la nature du contrat, seule trace d'une alternance
+      // que la carte affiche « CDD ».
+      contract: data.syntheseContrat?.replace(/\s*-\s*Contrat travail\s*$/i, "").trim() || null,
     };
   } catch {
     return null;
@@ -340,7 +353,7 @@ async function enrichCard(card: HtmlCard): Promise<ScrapedOffre> {
     company: card.company,
     country: "France",
     location: card.city,
-    contract_type: card.contract,
+    contract_type: own?.contract ?? card.contract,
     salary: own?.salary ?? null,
     description_html,
     description_text,

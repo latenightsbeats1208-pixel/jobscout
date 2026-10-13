@@ -187,6 +187,7 @@ export function PreferencesForm() {
             [
               ["cdi", "CDI"],
               ["cdd", "CDD"],
+              ["interim", "Intérim"],
               ["vie", "V.I.E"],
               ["stage", "Stage"],
               ["alternance", "Alternance"],
