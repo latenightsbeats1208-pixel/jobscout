@@ -74,9 +74,11 @@ describe("expérience du profil", () => {
 });
 
 describe("filtre d'expérience", () => {
-  it("n'écarte que sur une phrase explicite de l'annonce", () => {
+  it("des années demandées bien au-dessus du profil font reculer l'offre, sans l'écarter (ancien banc : 81 % → 88 %)", () => {
     const fromAd = assessSeniority(2, "Business Analyst", "Vous justifiez d'une expérience de 7 ans minimum.");
-    expect(fromAd.excluded).toMatch(/7 ans/);
+    expect(fromAd.excluded).toBeNull();
+    expect(fromAd.factor).toBeLessThan(0.6);
+    expect(fromAd.note).toMatch(/7 ans/);
 
     // Le titre seul est un indice trop flou : il pénalise, il n'écarte pas.
     const fromTitle = assessSeniority(1, "Head of Data", "Rejoignez une équipe passionnée.");

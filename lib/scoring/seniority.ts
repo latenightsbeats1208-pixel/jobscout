@@ -129,11 +129,16 @@ export function assessSeniority(
 
   const gap = required - profileYears;
   const years = (n: number) => `${n} an${n >= 2 ? "s" : ""}`;
-  // Écarter exige une phrase explicite de l'annonce. Le titre seul (« Lead »,
-  // « Head of ») est un indice trop flou pour retirer une offre : il pénalise.
+  // Des années demandées nettement au-dessus du profil : l'offre recule, sans
+  // être écartée. Un recruteur rabat souvent ses exigences, et l'ancien filtre
+  // retirait des postes que la personne pouvait viser : sur l'ancien banc, six
+  // « Business Analyst » jugés bons pour une junior (5 à 7 ans demandés) cédaient
+  // la place à des offres hors sujet — NDCG@20 de 81 % à 88 % sans le filtre ;
+  // banc marché (16 profils) inchangé. Une réduction plus forte au-delà de 5 ans
+  // d'écart faisait moins bien (84-85 %).
   if (fromDesc !== null && fromDesc - profileYears >= 3) {
-    const reason = `trop senior : l'annonce demande ${years(fromDesc)} d'expérience, environ ${years(Math.round(profileYears))} au profil`;
-    return { score: 0, factor: 1, required, profileYears, excluded: reason, note: reason };
+    const note = `expérience demandée : ${years(fromDesc)}, environ ${years(Math.round(profileYears))} au profil`;
+    return { score: 20, factor: 0.55, required, profileYears, excluded: null, note };
   }
   // Titre seul : « Senior », « Lead » pour un profil qui a 3 ans de moins. Mesuré
   // sur un designer de 18 mois (octobre 2026) : à 0,7, les « Senior Product
