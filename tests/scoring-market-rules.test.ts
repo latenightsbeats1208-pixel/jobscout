@@ -88,11 +88,27 @@ describe("contrat et lieu dans la note", () => {
     expect(scoreOffreLocal(profile, offer({ contract_type: "Profession libérale - Emploi non salarié" })).reason).toMatch(/freelance/);
   });
 
+  it("une annonce courte n'est pas punie de n'avoir pas eu la place de citer les compétences", () => {
+    const short = scoreOffreLocal(profile, offer({ description_text: "Agence de Marseille, CDI, poste à pourvoir rapidement." }));
+    const long = scoreOffreLocal(profile, offer({ description_text: "Notre groupe, fondé il y a trente ans, accompagne ses clients partout en France. ".repeat(30) }));
+    expect(short.score).toBeGreaterThan(long.score);
+  });
+
   it("l'intérim, accepté mais pas demandé, passe derrière le même poste en CDI", () => {
     const cdi = scoreOffreLocal(profile, offer({}));
     const interim = scoreOffreLocal(profile, offer({ contract_type: "Intérim - 6 Mois" }));
     expect(interim.breakdown.contract).toBe(20);
     expect(interim.score).toBeLessThan(cdi.score - 10);
     expect(scoreOffreLocal({ ...profile, preferred_contracts: ["cdi", "interim"] }, offer({ contract_type: "Intérim" })).breakdown.contract).toBe(100);
+  });
+});
+
+describe("table des communes", () => {
+  it("la ligature œ s'écrit oe, et un village est situé (cas réels du banc)", () => {
+    expect(locateFr("Marcq-en-Baroeul")?.dept).toBe("59");
+    expect(locateFr("Marcq-en-Barœul")?.dept).toBe("59");
+    expect(locateFr("Saint-Thomas-en-Royans")?.dept).toBe("26"); // 600 habitants
+    // Un nom de ville ne prend pas les départements de ses villages homonymes.
+    expect(locateFr("Lyon")?.candidates).toBeUndefined();
   });
 });

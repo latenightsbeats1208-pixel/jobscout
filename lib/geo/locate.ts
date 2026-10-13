@@ -24,6 +24,9 @@ export type Located = {
 const key = (s: string) =>
   s
     .toLowerCase()
+    // « Barœul » : la ligature n'a pas de forme décomposée (cf. scripts/build-communes.mjs).
+    .replace(/œ/g, "oe")
+    .replace(/æ/g, "ae")
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
     .replace(/[^a-z0-9]+/g, " ")

@@ -68,6 +68,18 @@ export type ScoreResult = {
 const WEIGHTS = { title: 0.48, skills: 0.42, keywords: 0.1 };
 /** Note de compétences qui vaut le plein crédit : aucun profil ne couvre 100 % d'une annonce. */
 const SKILLS_FULL_CREDIT = 80;
+/**
+ * Une annonce courte n'a pas la place de citer les compétences : moins de texte,
+ * moins de preuves, pas une moins bonne offre. Mesuré sur le banc marché
+ * (16 profils, 566 offres jugées au bon intitulé, octobre 2026) : la note de
+ * compétences suit la longueur du texte (corrélation 0,28) bien plus que le
+ * jugement (0,12) ; sous 800 caractères elle vaut 16 contre 31 au-delà de
+ * 3 000, pour des offres aussi bonnes. Sous SKILLS_EVIDENCE_CHARS (la longueur
+ * d'une annonce ordinaire), elle est donc ramenée vers SKILLS_PRIOR (sa moyenne
+ * sur ces offres). NDCG@20 de 85 % à 87 %, stable de 2 000 à 3 000 caractères.
+ */
+const SKILLS_EVIDENCE_CHARS = 2000;
+const SKILLS_PRIOR = 30;
 
 /** Plafond d'une offre hors critères : elle reste visible, en fin de liste. */
 const EXCLUDED_CAP = 15;
@@ -452,10 +464,14 @@ function scorePrepared(
 
   // 2. Pertinence, parmi les offres acceptables. Relue par l'IA, c'est son
   //    jugement (exigences couvertes, métier) qui fait foi.
+  // Une annonce courte n'a pas pu citer les compétences : sa note de compétences
+  // est ramenée vers la moyenne, à proportion du texte qui manque.
+  const evidence = Math.min(1, offre.description_text.length / SKILLS_EVIDENCE_CHARS);
+  const skillsUsed = evidence * skills.score + (1 - evidence) * SKILLS_PRIOR;
   const relevance = review
     ? aiRelevance(review)
     : WEIGHTS.title * title.score +
-      WEIGHTS.skills * 100 * Math.min(1, skills.score / SKILLS_FULL_CREDIT) +
+      WEIGHTS.skills * 100 * Math.min(1, skillsUsed / SKILLS_FULL_CREDIT) +
       WEIGHTS.keywords * keywords.score;
 
   // 3. Ajustements : niveaux partiels (expérience, langue), puis préférences.
