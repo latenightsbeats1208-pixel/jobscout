@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, ArrowUpRight, Briefcase, CalendarDays, ChevronDown, MapPin, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
 import { Chip } from "@/components/ui/chip";
 import { Badge } from "@/components/ui/badge";
-import { cn, formatRelativeDate, fromSqliteUtc, scoreColor } from "@/lib/utils";
+import { cn, formatRelativeDate, fromSqliteUtc } from "@/lib/utils";
 import type { OffreSummary, OffersSearch, OffersSort } from "@/lib/db/offres";
 import { CONTRACT_LABELS, CONTRACT_ORDER, type ContractCategory } from "@/lib/contracts";
 import { SOURCES_META } from "@/lib/sources-meta";
@@ -274,15 +274,15 @@ function OfferRow({ offer, selected, onSelect }: { offer: OffreSummary; selected
 }
 
 function OfferRowContent({ offer }: { offer: OffreSummary }) {
-  const score = scoreColor(offer.score ?? 0);
   return (
     <>
-      <span className="score-badge flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-[15px] text-[19px] font-semibold leading-none tabular-nums" data-tone={score.tone} aria-label={`Score ${offer.score ?? 0} sur 100, ${score.label.toLowerCase()}`}>
+      <span className="score-badge flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-[15px] text-[19px] font-semibold leading-none tabular-nums" data-tone={offer.score_tone} title={offer.score_label} aria-label={`Score ${offer.score ?? 0} sur 100, ${offer.score_label.toLowerCase()}`}>
         {offer.score ?? 0}<span className="mt-0.5 text-[11px] font-medium">/ 100</span>
       </span>
       <span className="min-w-0 flex-1">
         <span className="block font-medium leading-snug group-hover:text-accent">{offer.title}</span>
         <span className="mt-1 block text-small text-textSecondary">{offer.company || "Entreprise non précisée"} · {placesLabel(offer)}</span>
+        <ScoreWhy offer={offer} />
         <span className="mt-3 flex flex-wrap items-center gap-1.5">
           <OfferDate offer={offer} />
           <Badge>{sourceLabels[offer.source] ?? offer.source}</Badge>
@@ -301,8 +301,26 @@ function OfferRowContent({ offer }: { offer: OffreSummary }) {
   );
 }
 
+/**
+ * Pourquoi l'offre remonte, et ce qui la retient : sans cette ligne, il
+ * fallait ouvrir chaque offre pour le savoir (audit d'octobre 2026).
+ */
+function ScoreWhy({ offer }: { offer: OffreSummary }) {
+  if (!offer.score_plus && !offer.score_minus) return null;
+  // Deux lignes chacune au plus : une raison longue (celles de l'IA) ne doit jamais masquer le défaut.
+  return (
+    <span className="mt-1.5 block space-y-0.5 text-small leading-snug">
+      {offer.score_plus && <span className="line-clamp-2">{capitalize(offer.score_plus)}</span>}
+      {offer.score_minus && <span className="line-clamp-2 text-warning">{capitalize(offer.score_minus)}</span>}
+    </span>
+  );
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 function OfferPreview({ offer }: { offer: OffreSummary }) {
-  const score = scoreColor(offer.score ?? 0);
   const excerpt = offer.description_text
     .replace(/&#x([\da-f]+);/gi, (match, value: string) => decodeCodePoint(match, value, 16))
     .replace(/&#(\d+);/g, (match, value: string) => decodeCodePoint(match, value, 10))
@@ -322,7 +340,7 @@ function OfferPreview({ offer }: { offer: OffreSummary }) {
           <p className="text-small font-semibold text-accent">{offer.company || "Entreprise non précisée"}</p>
           <h3 className="mt-2 font-display text-[clamp(1.5rem,2vw,1.9rem)] font-medium leading-[1.25]">{offer.title}</h3>
         </div>
-        <span className="score-badge flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-[20px] text-[26px] font-semibold leading-none tabular-nums" data-tone={score.tone} aria-label={`Score ${offer.score ?? 0} sur 100, ${score.label.toLowerCase()}`}>
+        <span className="score-badge flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-[20px] text-[26px] font-semibold leading-none tabular-nums" data-tone={offer.score_tone} title={offer.score_label} aria-label={`Score ${offer.score ?? 0} sur 100, ${offer.score_label.toLowerCase()}`}>
           {offer.score ?? 0}<span className="mt-1 text-[11px] font-semibold">/ 100</span>
         </span>
       </div>
@@ -337,8 +355,8 @@ function OfferPreview({ offer }: { offer: OffreSummary }) {
         </p>
       )}
       <div className="py-5">
-        <p className="text-small font-semibold">Pourquoi cette offre ?</p>
-        <p className="mt-1 line-clamp-3 text-small leading-relaxed text-textSecondary">{offer.score_reason || `Score ${score.label.toLowerCase()} pour votre profil.`}</p>
+        <p className="text-small font-semibold">Pourquoi cette offre ? <span className="font-normal text-textSecondary">· {offer.score_label}</span></p>
+        <p className="mt-1 line-clamp-3 text-small leading-relaxed text-textSecondary">{offer.score_reason || "Faible recouvrement avec votre profil."}</p>
       </div>
       <div className="border-t border-border py-5">
         <OfferFeedbackControl offerId={offer.id} initial={offer.feedback} />

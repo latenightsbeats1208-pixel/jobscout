@@ -7,7 +7,7 @@ import { listCandidatures, candidaturesCounts, upcomingDeadlines } from "@/lib/d
 import { listDocuments } from "@/lib/db/documents";
 import { highScoreFigure, untrackedOffresCount, vieFigure } from "@/lib/db/dashboard";
 import { getProfile } from "@/lib/db/queries";
-import { formatRelativeDate, scoreColor } from "@/lib/utils";
+import { formatRelativeDate, scoreTone } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -118,11 +118,11 @@ export default async function DashboardPage() {
           </div>
           <div>
             {topOffers.length ? topOffers.map((offer) => {
-              // Code couleur du score (comme en 3.4.10) : fond teinté et encre ≥ 4,5:1 fournis par scoreColor.
-              const sc = scoreColor(offer.score ?? 0);
+              // Code couleur relatif à la liste de la personne (voir scoreDisplay) : fond teinté et encre ≥ 4,5:1.
+              const sc = scoreTone(offer.score_tone);
               return (
                 <Link key={offer.id} href={`/offres/${offer.id}`} className="offer-row group flex items-center gap-3.5 border-b border-border px-5 py-4 last:border-b-0 sm:px-6">
-                  <span className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-[14px] text-[17px] font-semibold leading-none tabular-nums" style={{ background: sc.bg, color: sc.fg }} aria-label={`Score ${offer.score ?? 0} sur 100, ${sc.label}`}>
+                  <span className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-[14px] text-[17px] font-semibold leading-none tabular-nums" style={{ background: sc.bg, color: sc.fg }} title={offer.score_label} aria-label={`Score ${offer.score ?? 0} sur 100, ${offer.score_label.toLowerCase()}`}>
                     {offer.score ?? 0}
                   </span>
                   <span className="min-w-0 flex-1">

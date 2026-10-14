@@ -45,6 +45,10 @@ export type ScoreResult = {
     excluded?: string;
     /** Verdict de la relecture par l'IA, quand elle a remplacé la pertinence locale. */
     ai_verdict?: string;
+    /** Pour la carte de la liste : ce qui fait monter l'offre… */
+    plus?: string;
+    /** … et son premier défaut, le plus lourd d'abord. */
+    minus?: string;
   };
   reason: string;
 };
@@ -543,6 +547,32 @@ function scorePrepared(
   else if (contract.score === 20) parts.push(`${contract.category} (non ciblé)`);
   const reason = parts.length ? parts.join(" · ") : "Faible recouvrement avec votre profil";
 
+  // La carte de la liste ne montrait que la note : il fallait ouvrir chaque
+  // offre pour savoir pourquoi elle remontait (audit d'octobre 2026). Elle dit
+  // désormais la raison principale et le premier défaut.
+  const plus =
+    review?.verdict === "postuler"
+      ? review.reason
+      : title.best && title.score >= 50
+      ? `intitulé proche de « ${title.best} »`
+      : skills.anchoredMatched.length
+      ? `compétences : ${skills.anchoredMatched.slice(0, 3).join(", ")}`
+      : skills.matched.length
+      ? `compétences : ${skills.matched.slice(0, 3).join(", ")}`
+      : null;
+  const defects = [
+    exclusions.length ? `hors critères : ${exclusions[0]}` : null,
+    review && review.verdict !== "postuler" ? review.reason : null,
+    otherStack ? `autre langage (${otherStack})` : null,
+    zone.fit === "hors" ? `hors de votre zone (${zone.place})` : zone.fit === "proche" ? `près de votre zone (${zone.place})` : null,
+    contract.freelance ? "freelance" : null,
+    !seniority.excluded && seniority.factor < 1 ? seniority.note : null,
+    !language.excluded && language.factor < 1 ? language.note : null,
+    contract.score === 20 ? `${contract.category} (non ciblé)` : null,
+    !offre.description_text.trim() ? "description indisponible : note fondée sur le seul titre" : null,
+  ];
+  const minus = defects.find((d): d is string => !!d) ?? null;
+
   return {
     score: finalScore,
     breakdown: {
@@ -557,6 +587,8 @@ function scorePrepared(
       ...(zone.fit ? { location: zone.fit === "dans" ? 100 : zone.fit === "proche" ? 70 : 20 } : {}),
       ...(exclusions.length ? { excluded: exclusions.join(" ; ") } : {}),
       ...(review ? { ai_verdict: review.verdict } : {}),
+      ...(plus ? { plus } : {}),
+      ...(minus ? { minus } : {}),
     },
     reason,
   };

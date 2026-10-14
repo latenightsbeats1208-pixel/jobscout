@@ -92,6 +92,16 @@ describe("contrat et lieu dans la note", () => {
     expect(scoreOffreLocal(profile, offer({ contract_type: "Profession libérale - Emploi non salarié" })).reason).toMatch(/freelance/);
   });
 
+  it("la carte dit la raison principale et le premier défaut, le plus lourd d'abord", () => {
+    const far = scoreOffreLocal(profile, offer({ location: "Lille" }));
+    expect(far.breakdown.plus).toBe("intitulé proche de « UX Designer »");
+    expect(far.breakdown.minus).toBe("hors de votre zone (Lille)");
+    // Une exclusion passe avant la distance.
+    expect(scoreOffreLocal(profile, offer({ location: "Lille", title: "Stage - UX Designer", contract_type: "Stage" })).breakdown.minus).toMatch(/^hors critères : .*stage/);
+    // Rien à redire : pas de défaut inventé.
+    expect(scoreOffreLocal(profile, offer({})).breakdown.minus).toBeUndefined();
+  });
+
   it("une annonce courte n'est pas punie de n'avoir pas eu la place de citer les compétences", () => {
     const short = scoreOffreLocal(profile, offer({ description_text: "Agence de Marseille, CDI, poste à pourvoir rapidement." }));
     const long = scoreOffreLocal(profile, offer({ description_text: "Notre groupe, fondé il y a trente ans, accompagne ses clients partout en France. ".repeat(30) }));

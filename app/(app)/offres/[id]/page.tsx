@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowUpRight, AlertTriangle, CalendarDays, Copy, MapPin } from "lucide-react";
-import { getOffre, type OffreFiltered } from "@/lib/db/offres";
+import { getOffre, getScoreScale, type OffreFiltered } from "@/lib/db/offres";
 import { listDocuments, offreFolderPath } from "@/lib/db/documents";
 import { getDb } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import { getFeedback } from "@/lib/db/feedback";
 import { getOffreSiblings, type OffreSibling } from "@/lib/db/duplicates";
 import { CHECKABLE_SOURCES } from "@/lib/scrapers/liveness";
 import { OfferLiveness } from "@/components/app/offer-liveness";
-import { formatRelativeDate, fromSqliteUtc, scoreColor } from "@/lib/utils";
+import { formatRelativeDate, fromSqliteUtc, scoreDisplay } from "@/lib/utils";
 import { CONTRACT_LABELS } from "@/lib/contracts";
 import { SOURCES_META } from "@/lib/sources-meta";
 
@@ -30,7 +30,11 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
   const lmDocx = docs.find((d) => d.type === "lm" && d.format === "docx") ?? null;
   const msgDoc = docs.find((d) => d.type === "msg") ?? null;
   const existingApplication = getDb().prepare("SELECT status FROM candidatures WHERE offre_id = ? LIMIT 1").get(offre.id) as { status: string } | undefined;
-  const score = scoreColor(offre.score ?? 0);
+  const score = scoreDisplay(offre.score ?? 0, {
+    scale: getScoreScale(),
+    verdict: offre.score_breakdown?.ai_verdict,
+    excluded: !!offre.score_breakdown?.excluded,
+  });
   const sourceLabel = SOURCES_META.find((source) => source.id === offre.source)?.label ?? offre.source;
   const contractLabel = offre.contract_category !== "autre" ? CONTRACT_LABELS[offre.contract_category] : null;
   // Le libellé brut de la source n'est répété que s'il apporte une précision (« Temps plein »…).
@@ -62,7 +66,7 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
             // Sans date de publication, la première collecte dit au moins depuis quand l'offre est connue.
             <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" /> Date inconnue · repérée {formatRelativeDate(fromSqliteUtc(offre.first_seen_at))}</span>
           ) : null}
-          <span className="font-medium">Score {score.label.toLowerCase()}</span>
+          <span className="font-medium">{score.label}</span>
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-2">
           <Badge>{sourceLabel}</Badge>

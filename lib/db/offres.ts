@@ -6,6 +6,7 @@ import type { ScoreResult } from "@/lib/scoring/local";
 import type { AiReview } from "@/lib/scoring/review";
 import type { FeedbackVerdict, OfferFeedback } from "@/lib/feedback";
 import { classifyContract, CONTRACT_ORDER, type ContractCategory } from "@/lib/contracts";
+import { scoreDisplay, scoreScale, type ScoreScale, type ScoreTone } from "@/lib/utils";
 
 export type { ScrapedOffre };
 
@@ -79,6 +80,12 @@ export type OffreSummary = Pick<
 > & {
   description_text: string;
   score_reason: string | null;
+  /** Ce que la note veut dire pour cette personne (voir scoreDisplay). */
+  score_label: string;
+  score_tone: ScoreTone;
+  /** Raison principale et premier défaut, pour la carte. */
+  score_plus: string | null;
+  score_minus: string | null;
   /** Avis de l'utilisateur (👍 / 👎), ou null. */
   feedback: OfferFeedback | null;
   /** Problèmes relevés par le contrôle de qualité. */
@@ -137,7 +144,7 @@ function normalizeSearch(value: string): string {
 // texte : ~250 ms par clic de filtre, ~600 ms par recherche. Les lignes prêtes à
 // filtrer restent en mémoire et sont reconstruites dès que la base change.
 
-type CachedOffre = Omit<OffreSummary, "description_text" | "score_reason"> & {
+type CachedOffre = Omit<OffreSummary, "description_text" | "score_reason" | "score_label" | "score_tone" | "score_plus" | "score_minus"> & {
   /** 1 000 premiers caractères : tout ce que l’aperçu affiche. */
   excerpt: string;
   /** JSON brut, lu seulement pour les offres de la page renvoyée. */
@@ -153,6 +160,8 @@ type OffresCache = {
   /** Titre, entreprise, pays, lieu et description complète, sans accents ; construit à la première recherche. */
   haystacks: Map<number, string> | null;
   facets: OffersSearch["facets"];
+  /** Échelle relative des notes : offres en ligne et dans les critères. */
+  scale: ScoreScale | null;
 };
 
 const ORDER_TTL_MS = 60_000;
@@ -194,6 +203,7 @@ function buildOffresCache(fingerprint: string): OffresCache {
   const variants: CacheRow[] = [];
   let open = 0;
   let closed = 0;
+  const scores: number[] = [];
   for (const row of rows) {
     // Un doublon n'a pas sa propre ligne : il s'affiche sous l'offre de son groupe.
     if (row.duplicate_of != null) {
@@ -205,6 +215,7 @@ function buildOffresCache(fingerprint: string): OffresCache {
     if (row.closed_at) closed++;
     else {
       open++;
+      if (!parseJson<{ excluded?: string } | null>(row.score_breakdown, null)?.excluded) scores.push(row.score ?? 0);
       contractCounts[contract_category]++;
       if (row.country) countries.add(row.country);
       sources.add(row.source);
@@ -232,7 +243,7 @@ function buildOffresCache(fingerprint: string): OffresCache {
     if (!rep.closed_at && !v.closed_at) sources.add(v.source);
   }
   return {
-    fingerprint, byId, smart, orderedAt: Date.now(), haystacks: null,
+    fingerprint, byId, smart, orderedAt: Date.now(), haystacks: null, scale: scoreScale(scores),
     facets: {
       total: open,
       countries: [...countries].sort((a, b) => a.localeCompare(b, "fr")),
@@ -241,6 +252,26 @@ function buildOffresCache(fingerprint: string): OffresCache {
       hasVie: contractCounts.vie > 0,
       closed,
     },
+  };
+}
+
+/** Échelle relative des notes de la liste (voir scoreDisplay) ; null sous 10 offres. */
+export function getScoreScale(): ScoreScale | null {
+  return getOffresCache().scale;
+}
+
+type DisplayBreakdown = { reason?: string; ai_verdict?: string; excluded?: string; plus?: string; minus?: string };
+
+/** Libellé, couleur, raison et défaut d'une note, à partir de sa décomposition enregistrée. */
+function displayOf(score: number | null, breakdown: string | null, scale: ScoreScale | null) {
+  const bd = parseJson<DisplayBreakdown | null>(breakdown, null);
+  const d = scoreDisplay(score ?? 0, { scale, verdict: bd?.ai_verdict, excluded: !!bd?.excluded });
+  return {
+    score_reason: bd?.reason ?? null,
+    score_label: d.label,
+    score_tone: d.tone,
+    score_plus: bd?.plus ?? null,
+    score_minus: bd?.minus ?? null,
   };
 }
 
@@ -341,7 +372,7 @@ export function searchOffres(opts: {
       posted_at: row.posted_at, score: row.score, is_vie: row.is_vie,
       description_status: row.description_status,
       description_text: row.excerpt,
-      score_reason: parseJson<{ reason?: string } | null>(row.score_breakdown, null)?.reason ?? null,
+      ...displayOf(row.score, row.score_breakdown, cache.scale),
       contract_category: row.contract_category,
       has_cv: row.has_cv, has_lm: row.has_lm,
       first_seen_at: row.first_seen_at, closed_at: row.closed_at,
@@ -356,17 +387,24 @@ export function searchOffres(opts: {
 }
 
 /** Les six premières suggestions suffisent au tableau de bord. */
-export function suggestedOffres(limit: number, untracked = false): Pick<OffreRow, "id" | "title" | "company" | "country" | "location" | "posted_at" | "score">[] {
-  syncDuplicates();
-  return getDb().prepare(`
-    SELECT o.id, o.title, o.company, o.country, o.location, o.posted_at, o.score
+export function suggestedOffres(
+  limit: number,
+  untracked = false
+): (Pick<OffreRow, "id" | "title" | "company" | "country" | "location" | "posted_at" | "score"> & Pick<OffreSummary, "score_label" | "score_tone">)[] {
+  const scale = getScoreScale();
+  const rows = getDb().prepare(`
+    SELECT o.id, o.title, o.company, o.country, o.location, o.posted_at, o.score, o.score_breakdown
     FROM offres o
     -- Une offre jugée « pas pour moi », retirée par sa source ou en double n'est jamais suggérée.
     WHERE NOT EXISTS(SELECT 1 FROM offre_feedback f WHERE f.offre_id = o.id AND f.verdict = 'down')
     AND ${VISIBLE_SQL}
     ${untracked ? "AND NOT EXISTS(SELECT 1 FROM candidatures c WHERE c.offre_id = o.id)" : ""}
     ORDER BY ${SMART_ORDER} LIMIT ?
-  `).all(Math.max(1, Math.min(20, Math.trunc(limit)))) as Pick<OffreRow, "id" | "title" | "company" | "country" | "location" | "posted_at" | "score">[];
+  `).all(Math.max(1, Math.min(20, Math.trunc(limit)))) as (Pick<OffreRow, "id" | "title" | "company" | "country" | "location" | "posted_at" | "score"> & { score_breakdown: string | null })[];
+  return rows.map(({ score_breakdown, ...row }) => {
+    const { score_label, score_tone } = displayOf(row.score, score_breakdown, scale);
+    return { ...row, score_label, score_tone };
+  });
 }
 
 // Filet de sécurité anti-mojibake : répare l'UTF-8 double-décodé (é→Ã©, ’→â€™…)
