@@ -167,6 +167,10 @@ export async function* runScan(
     // (moteur absent, API HS) laissait « 0 vues, 0 échecs » et un scan « terminé ».
     if (fatal) {
       say(views ? `[${scraper.name}] interrompue après ${count(views, "vue")}, ${count(okCount, "insérée")} : ${fatal}` : `[${scraper.name}] échec : ${fatal}`);
+    } else if (!views) {
+      // Rien vu, sans erreur : la recherche ne trouve rien sur cette source. Le dire,
+      // au lieu d'un « 0 vue, 0 échec » qui se lisait comme une collecte réussie.
+      say(`[${scraper.name}] aucune offre trouvée pour ces recherches`);
     } else {
       say(`[${scraper.name}] ${count(views, "vue")}, ${count(okCount, "insérée")}, ${count(failed, "échec")}`);
     }

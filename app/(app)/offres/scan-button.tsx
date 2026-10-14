@@ -301,6 +301,9 @@ export function ScanButton() {
                         <span className="shrink-0 font-medium text-danger">
                           {p.done > 0 ? `interrompue à ${p.done}/${p.total}` : "en échec"}
                         </span>
+                      ) : p.status === "done" && p.total === 0 ? (
+                        // « 0/0 » se lisait comme une source qui a répondu : c'est une recherche à revoir.
+                        <span className="shrink-0 font-medium text-warning">aucune offre trouvée</span>
                       ) : (
                         <span className="text-textSecondary">
                           {p.done}/{p.total} {p.failed > 0 && `· ${p.failed} échec${p.failed > 1 ? "s" : ""}`}
@@ -314,6 +317,11 @@ export function ScanButton() {
                       />
                     </div>
                     {p.error && <p className="mt-1 text-caption text-textSecondary">{p.error}</p>}
+                    {!p.error && p.status === "done" && p.total === 0 && (
+                      <p className="mt-1 text-caption text-textSecondary">
+                        Aucune annonce pour vos postes visés dans cette zone. Un intitulé plus courant, réglé dans Profil, élargit la recherche.
+                      </p>
+                    )}
                   </div>
                 ))}
                 {!Object.keys(sources).length && running && (

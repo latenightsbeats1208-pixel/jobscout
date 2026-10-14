@@ -29,6 +29,15 @@ const broken: Scraper = {
   },
 };
 
+// Répond, mais ne trouve rien : la recherche est à revoir, la source n'a pas échoué.
+const empty: Scraper = {
+  name: "linkedin",
+  async *scrape(_c, onEvent) {
+    onEvent({ kind: "list", source: "linkedin", total: 0 });
+    onEvent({ kind: "done", source: "linkedin", seen: 0, ok: 0, failed: 0 });
+  },
+};
+
 let enabled: Scraper[] = [];
 vi.mock("@/lib/scrapers/registry", () => ({
   getEnabledScrapers: () => enabled,
@@ -81,6 +90,14 @@ describe("statut du scan", () => {
     const { done, run } = await scan();
     expect(done.status).toBe("failed");
     expect(run.status).toBe("failed");
+  });
+
+  it("une source sans aucune offre le dit, sans faire échouer le scan", async () => {
+    enabled = [working, empty];
+    const { done, lines } = await scan();
+    expect(done.status).toBe("done");
+    expect(lines).toContain("[linkedin] aucune offre trouvée pour ces recherches");
+    expect(lines).not.toContain("[linkedin] 0 vue, 0 insérée, 0 échec");
   });
 
   it("toutes les sources répondent : scan terminé", async () => {

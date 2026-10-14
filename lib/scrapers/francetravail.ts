@@ -239,7 +239,11 @@ function parseHtmlSearch(html: string): HtmlCard[] {
   return out;
 }
 
-async function fetchHtmlPage(keywords: string, page: number, area?: SearchArea | null): Promise<HtmlCard[]> {
+/**
+ * Une page de résultats. `landing` : le site a redirigé la recherche vers sa
+ * page « /offres/emploi/<métier>/<lieu> », qui n'a qu'une page.
+ */
+async function fetchHtmlPage(keywords: string, page: number, area?: SearchArea | null): Promise<{ cards: HtmlCard[]; landing: boolean }> {
   const params = new URLSearchParams({
     motsCles: keywords,
     offresPartenaires: "true",
@@ -248,8 +252,14 @@ async function fetchHtmlPage(keywords: string, page: number, area?: SearchArea |
   // « 69D » : un département, « 84R » : une région (vérifié sur le site, octobre 2026).
   if (area) params.set("lieux", `${area.code}${area.kind === "region" ? "R" : "D"}`);
   const res = await fetch(`${SEARCH_PAGE}?${params}`, { headers: BROWSER_HEADERS });
+  // Recherche courante (« Développeur PHP » dans le Finistère, « Conducteur de
+  // travaux » dans le Puy-de-Dôme) : le site redirige vers sa page métier × lieu,
+  // servie en 410 mais avec ses 20 premières offres. La rejeter laissait la
+  // source à « 0 vue, 0 échec », sans erreur (audit d'octobre 2026 : 0 offre
+  // France Travail pour un développeur PHP, 24 sur le site).
+  if (res.status === 410 && res.redirected) return { cards: parseHtmlSearch(await res.text()), landing: true };
   if (!res.ok) throw new Error(`France Travail HTTP ${res.status}`);
-  return parseHtmlSearch(await res.text());
+  return { cards: parseHtmlSearch(await res.text()), landing: false };
 }
 
 // Description lue pour une offre, ou motif de rejet quand la réponse décrit
@@ -419,25 +429,33 @@ export const francetravailScraper: Scraper = {
 
     // Stratégie 2 : HTML fallback
     const seen = new Map<string, HtmlCard>();
+    const listErrors: string[] = [];
     for (const q of queries) {
       let taken = 0;
       for (let page = 1; page <= 3 && taken < quota; page++) {
         try {
-          const cards = await fetchHtmlPage(q, page, criteria.area);
+          const { cards, landing } = await fetchHtmlPage(q, page, criteria.area);
           if (!cards.length) break;
+          let added = 0;
           for (const c of cards) {
             if (!seen.has(c.id) && taken < quota) {
               seen.set(c.id, c);
               taken++;
+              added++;
             }
           }
-          if (cards.length < 10) break;
+          // Une page métier × lieu ne se pagine pas : la suivante redonne les mêmes offres.
+          if (landing || !added || cards.length < 10) break;
           await sleep(1200);
-        } catch {
+        } catch (e) {
+          listErrors.push(e instanceof Error ? e.message : String(e));
           break;
         }
       }
     }
+    // Aucune offre et des recherches en erreur : la source a échoué, le bilan
+    // du scan doit le dire au lieu d'afficher « 0 vue, 0 échec ».
+    if (!seen.size && listErrors.length) throw new Error(listErrors[0]);
 
     const cards = Array.from(seen.values()).slice(0, max);
     onEvent({ kind: "list", source: SOURCE, total: cards.length });
