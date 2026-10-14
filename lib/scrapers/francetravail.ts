@@ -239,6 +239,25 @@ function parseHtmlSearch(html: string): HtmlCard[] {
   return out;
 }
 
+const QUERY_STOPWORDS = new Set(["de", "des", "du", "la", "le", "les", "et", "en", "pour", "au", "aux", "un", "une"]);
+
+/**
+ * Les mots d'une requête réduits à leur début, pour couvrir le féminin et le
+ * pluriel : « Formateur » → « format » (formateur, formatrice).
+ */
+export function queryStems(query: string): string[] {
+  return norm(query)
+    .split(/[^a-z0-9+#]+/)
+    .filter((w) => w.length >= 2 && !QUERY_STOPWORDS.has(w))
+    .map((w) => (w.length > 4 ? w.slice(0, Math.max(4, w.length - 3)) : w));
+}
+
+/** La carte (titre et extrait) contient-elle tous les mots de la requête ? */
+function matchesQuery(card: HtmlCard, stems: string[]): boolean {
+  const text = norm(`${card.title} ${card.snippet}`);
+  return stems.every((s) => new RegExp(`(?:^|[^a-z0-9])${s.replace(/[+#.]/g, "\\$&")}`).test(text));
+}
+
 /**
  * Une page de résultats. `landing` : le site a redirigé la recherche vers sa
  * page « /offres/emploi/<métier>/<lieu> », qui n'a qu'une page.
@@ -432,10 +451,15 @@ export const francetravailScraper: Scraper = {
     const listErrors: string[] = [];
     for (const q of queries) {
       let taken = 0;
+      const stems = queryStems(q);
       for (let page = 1; page <= 3 && taken < quota; page++) {
         try {
-          const { cards, landing } = await fetchHtmlPage(q, page, criteria.area);
-          if (!cards.length) break;
+          const result = await fetchHtmlPage(q, page, criteria.area);
+          if (!result.cards.length) break;
+          // La page métier × lieu liste tout le métier : « Développeur PHP » dans
+          // le Finistère y ramenait vingt postes Java, C# ou JavaScript, qui
+          // passaient devant les offres PHP. On n'en garde que ce qui parle de la requête.
+          const cards = result.landing ? result.cards.filter((c) => matchesQuery(c, stems)) : result.cards;
           let added = 0;
           for (const c of cards) {
             if (!seen.has(c.id) && taken < quota) {
@@ -445,7 +469,7 @@ export const francetravailScraper: Scraper = {
             }
           }
           // Une page métier × lieu ne se pagine pas : la suivante redonne les mêmes offres.
-          if (landing || !added || cards.length < 10) break;
+          if (result.landing || !added || cards.length < 10) break;
           await sleep(1200);
         } catch (e) {
           listErrors.push(e instanceof Error ? e.message : String(e));

@@ -26,7 +26,7 @@ function landing(): Response {
   return res;
 }
 
-async function scrape(search: () => Response): Promise<{ offres: ScrapedOffre[]; searches: number }> {
+async function scrape(search: () => Response, query = "Assistant service client"): Promise<{ offres: ScrapedOffre[]; searches: number }> {
   let searches = 0;
   vi.stubEnv("FT_CLIENT_ID", "");
   vi.stubEnv("FT_CLIENT_SECRET", "");
@@ -42,7 +42,7 @@ async function scrape(search: () => Response): Promise<{ offres: ScrapedOffre[];
   const { francetravailScraper } = await import("@/lib/scrapers/francetravail");
   const offres: ScrapedOffre[] = [];
   for await (const o of francetravailScraper.scrape(
-    { queries: ["Développeur PHP"], sectors: [], countries: ["France"], area: { kind: "departement", code: "29", name: "Finistère" } },
+    { queries: [query], sectors: [], countries: ["France"], area: { kind: "departement", code: "29", name: "Finistère" } },
     () => {}
   )) {
     offres.push(o);
@@ -56,10 +56,20 @@ afterEach(() => {
 });
 
 describe("France Travail : page métier × lieu et recherches en erreur", () => {
-  it("lit les offres de la page 410 vers laquelle la recherche redirige, sans la paginer", async () => {
+  it("lit la page 410 vers laquelle la recherche redirige, sans la paginer, et n'en garde que la requête", async () => {
+    // La page liste tout le métier : seule l'offre qui parle d'assistant du service client reste.
     const { offres, searches } = await scrape(landing);
-    expect(offres.map((o) => o.source_id)).toEqual(["900AAAA", "900BBBB", "900CCCC", "7900001", "900EEEE"]);
+    expect(offres.map((o) => o.source_id)).toEqual(["900EEEE"]);
     expect(searches).toBe(1);
+    // « Développeur PHP » : aucune des cinq cartes n'en parle (Tech Lead .Net, station-service…).
+    expect((await scrape(landing, "Développeur PHP")).offres).toEqual([]);
+  });
+
+  it("les mots de la requête couvrent le féminin et le pluriel", async () => {
+    const { queryStems } = await import("@/lib/scrapers/francetravail");
+    expect(queryStems("Formateur")).toEqual(["format"]);
+    expect(queryStems("Conducteur de travaux")).toEqual(["conduct", "trav"]);
+    expect(queryStems("Développeur PHP")).toEqual(["developp", "php"]);
   });
 
   it("une recherche en erreur fait échouer la source au lieu de rendre zéro offre", async () => {
