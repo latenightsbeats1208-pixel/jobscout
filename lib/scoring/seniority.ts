@@ -28,11 +28,30 @@ function toMonths(raw: string | null | undefined, now: Date): number | null {
 }
 
 const TRAINEE = /\b(stage|stagiaire|intern|internship|alternance|alternant|apprenti|apprentie|apprentice|trainee)/;
+/**
+ * Emplois d'été ou de vacances : quelques mois par an, mais datés de janvier
+ * à janvier dès que le CV ne donne que les années. « Vendeuse saisonnière,
+ * étés 2022, 2023 et 2024 » devenait deux ans pleins, et une jeune diplômée
+ * passait pour avoir 2,6 ans d'expérience (audit d'octobre 2026).
+ */
+// « été » seul est aussi un participe (« a été promu ») : il faut une année ou « job d'été ».
+const SEASONAL = /\b(saisonniere?s?|saisonniers?|summer jobs?|summer (?:19|20)\d\d|jobs? d ete|etes? (?:19|20)\d\d|pendant les vacances|vacances scolaires)\b/;
+/** Emploi d'étudiant ou à temps partiel : compte pour moitié, comme un stage. */
+const PART_TIME = /\b(temps partiel|mi temps|job etudiant|pendant les etudes|part time|student job)\b/;
+
+/** Poids d'une expérience dans les années comptées. */
+function experienceWeight(e: { title: string; description?: string | null }): number {
+  const text = normalize(`${e.title} ${e.description ?? ""}`).replace(/[^a-z0-9]+/g, " ");
+  if (SEASONAL.test(text)) return 0.25;
+  if (TRAINEE.test(normalize(e.title)) || PART_TIME.test(text)) return 0.5;
+  return 1;
+}
 
 /**
  * Années d'expérience du profil. Les périodes qui se chevauchent ne comptent
- * qu'une fois ; un stage ou une alternance compte pour moitié. null si aucune
- * expérience n'est datée — on ne filtre alors rien.
+ * qu'une fois ; un stage, une alternance ou un emploi à temps partiel compte
+ * pour moitié, un emploi saisonnier pour un quart. null si aucune expérience
+ * n'est datée — on ne filtre alors rien.
  */
 export function profileExperienceYears(profile: ProfileFull, now = new Date()): number | null {
   const intervals: { start: number; end: number; weight: number }[] = [];
@@ -43,7 +62,7 @@ export function profileExperienceYears(profile: ProfileFull, now = new Date()): 
     // Fin absente : on ne suppose pas un poste toujours en cours, on compte six mois.
     const end = Math.min(toMonths(e.end_date, now) ?? start + 6, nowMonths);
     if (end <= start) continue;
-    intervals.push({ start, end, weight: TRAINEE.test(normalize(e.title)) ? 0.5 : 1 });
+    intervals.push({ start, end, weight: experienceWeight(e) });
   }
   if (!intervals.length) return null;
   const from = Math.min(...intervals.map((i) => i.start));

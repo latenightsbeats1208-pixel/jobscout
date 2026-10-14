@@ -16,6 +16,7 @@ import {
   type Corpus,
 } from "./text";
 import { assessSeniority, profileExperienceYears } from "./seniority";
+import { assessHierarchy, profileRanks, type Rank } from "./hierarchy";
 import { assessLanguage, profileLanguages, type Mastery } from "./language";
 import { aiFactor, isReviewUsable, type AiReview } from "./review";
 import { withoutGenderForms } from "@/lib/scan/query-rewrite";
@@ -143,6 +144,7 @@ type PreparedProfile = {
   keywords: { tokens: string[]; info: number }[];
   vocabulary: Set<string>;
   years: number | null;
+  ranks: { min: Rank; max: Rank } | null;
   languages: Map<string, Mastery> | null;
   area: SearchArea | null;
 };
@@ -194,6 +196,7 @@ function prepareProfile(profile: ProfileFull, corpus: Corpus): PreparedProfile {
     keywords,
     vocabulary: new Set(tokenize(vocabularyText)),
     years: profileExperienceYears(profile),
+    ranks: profileRanks(declared),
     languages: profileLanguages(profile),
     area: parseSearchArea(profile.search_area),
   };
@@ -474,6 +477,7 @@ function scorePrepared(
   const keywords = scoreKeywords(p, o);
   const country = scoreCountry(profile.target_countries, offre.country);
   const seniority = assessSeniority(p.years, offre.title, offre.description_text);
+  const hierarchy = assessHierarchy(p.ranks, p.years, offre.title);
   const language = assessLanguage(p.languages, offre.title, offre.description_text || offre.language_text || "");
   const contract = scoreContract(profile.preferred_contracts, offre);
   const duration = scoreDuration(contract.category, offre.description_text);
@@ -514,7 +518,7 @@ function scorePrepared(
   let finalScore = Math.round(
     Math.max(
       0,
-      Math.min(100, relevance * seniority.factor * language.factor * zoneFactor * freelanceFactor + durationBonus + contractDelta)
+      Math.min(100, relevance * seniority.factor * hierarchy.factor * language.factor * zoneFactor * freelanceFactor + durationBonus + contractDelta)
     )
   );
   if (exclusions.length) finalScore = Math.min(finalScore, EXCLUDED_CAP);
@@ -542,6 +546,7 @@ function scorePrepared(
   else if (zone.fit === "proche") parts.push(`près de votre zone (${zone.place})`);
   if (contract.freelance) parts.push("freelance");
   if (!seniority.excluded && seniority.note) parts.push(seniority.note);
+  if (hierarchy.note) parts.push(hierarchy.note);
   if (!language.excluded && language.note) parts.push(language.note);
   if (duration.months && duration.score >= 60) parts.push(`durée ${duration.months} mois`);
   if (contract.score === 100) parts.push(`${contract.category.toUpperCase()} recherché`);
@@ -567,6 +572,7 @@ function scorePrepared(
     otherStack ? `autre langage (${otherStack})` : null,
     zone.fit === "hors" ? `hors de votre zone (${zone.place})` : zone.fit === "proche" ? `près de votre zone (${zone.place})` : null,
     contract.freelance ? "freelance" : null,
+    hierarchy.note,
     !seniority.excluded && seniority.factor < 1 ? seniority.note : null,
     !language.excluded && language.factor < 1 ? language.note : null,
     contract.score === 20 ? `${contract.category} (non ciblé)` : null,
