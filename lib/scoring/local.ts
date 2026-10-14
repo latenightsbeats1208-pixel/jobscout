@@ -18,6 +18,7 @@ import {
 import { assessSeniority, profileExperienceYears } from "./seniority";
 import { assessLanguage, profileLanguages, type Mastery } from "./language";
 import { aiFactor, isReviewUsable, type AiReview } from "./review";
+import { withoutGenderForms } from "@/lib/scan/query-rewrite";
 import { parseSearchArea, type SearchArea } from "@/lib/geo/fr";
 import { zoneFit } from "@/lib/geo/locate";
 import { decodeHtmlEntities } from "@/lib/text/entities";
@@ -121,7 +122,7 @@ function requirementSection(description: string): string {
 function prepareOffer(o: ScoringInput): PreparedOffer {
   // La ville ou le pays repris dans le titre (« … - Rouen ») ne disent rien du métier.
   const place = new Set(tokenize(`${o.location ?? ""} ${o.country ?? ""}`));
-  const titleTokens = tokenize(o.title).filter((t) => !TITLE_NOISE.has(t) && !place.has(t));
+  const titleTokens = tokenize(withoutGenderForms(o.title)).filter((t) => !TITLE_NOISE.has(t) && !place.has(t));
   const body = tokenize(`${o.title}\n${o.description_text}`);
   return {
     titleTokens,

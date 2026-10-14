@@ -118,6 +118,22 @@ export function rewriteTitle(title: string): string[] {
   return out.length ? out : [clean(title)];
 }
 
+/**
+ * Intitulé d'annonce sans ses formes féminines : « Masseur / Masseuse
+ * kinésithérapeute » → « Masseur kinésithérapeute », « Conducteur·rice de
+ * travaux » → « Conducteur de travaux ». Pour la note : « Masseuse », mot rare
+ * resté sans correspondance, faisait tomber la proximité de titre de 48 à 17
+ * dès que les autres annonces de la base étaient toutes des postes de kiné.
+ */
+export function withoutGenderForms(title: string): string {
+  let t = title;
+  for (const re of GENDER_MARKS) t = t.replace(re, "");
+  t = t.replace(/(\p{L}[\p{L}'’-]*)\s*\/\s*(\p{L}[\p{L}'’-]*)/gu, (whole, left: string, right: string) =>
+    norm(masculine(right, true)) === norm(left) ? left : whole
+  );
+  return t.replace(/\s+/g, " ").trim();
+}
+
 // --- Intitulés anglais ---------------------------------------------------------
 
 /** Mot de tête anglais → métier français. */

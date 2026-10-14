@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { frenchTitle, rewriteTitle } from "@/lib/scan/query-rewrite";
+import { frenchTitle, rewriteTitle, withoutGenderForms } from "@/lib/scan/query-rewrite";
 import { buildSearchPlan } from "@/lib/scan/search-plan";
 
 const exp = (title: string) => ({ title, bullet_points: [], skills_used: [] });
@@ -75,5 +75,17 @@ describe("un intitulé anglais reçoit sa traduction", () => {
       search_area: "D:33",
     });
     expect(plan.queries).toEqual(["Chargé de marketing digital"]);
+  });
+});
+
+describe("un intitulé d'annonce perd ses doublets de genre avant la note", () => {
+  it("fusionne « Masseur / Masseuse », garde deux métiers distincts", () => {
+    // « Masseuse », mot rare sans correspondance, faisait tomber la proximité de titre de 48 à 17.
+    expect(withoutGenderForms("Masseur / Masseuse kinésithérapeute (H/F)")).toBe("Masseur kinésithérapeute");
+    expect(withoutGenderForms("Conducteur / Conductrice de travaux")).toBe("Conducteur de travaux");
+    expect(withoutGenderForms("Agent / Agente de sécurité incendie")).toBe("Agent de sécurité incendie");
+    expect(withoutGenderForms("Développeur/Développeuse web")).toBe("Développeur web");
+    expect(withoutGenderForms("Comptable / Assistante de gestion")).toBe("Comptable / Assistante de gestion");
+    expect(withoutGenderForms("Développeur PHP / Symfony")).toBe("Développeur PHP / Symfony");
   });
 });
