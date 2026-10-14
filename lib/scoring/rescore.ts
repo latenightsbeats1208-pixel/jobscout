@@ -4,9 +4,9 @@ import { getDb, getSetting, parseJson, setSetting, transaction } from "@/lib/db"
 import { getProfile } from "@/lib/db/queries";
 import { setOffreScore } from "@/lib/db/offres";
 import { buildCorpus, scoreOffresLocal, type Corpus, type ScoringInput } from "./local";
-import { REVIEW_VERSION, isReviewCurrent, offerHash, profileHash, type AiReview } from "./review";
+import { REVIEW_VERSION, effectiveVerdict, isReviewCurrent, isReviewUsable, offerHash, profileHash, type AiReview, type Verdict } from "./review";
 
-type ScoringRow = ScoringInput & { id: number; ai_review: string | null; description_status: string };
+type ScoringRow = ScoringInput & { id: number; ai_review: string | null; description_status: string; duplicate_of: number | null };
 
 /**
  * Le strict nécessaire à la note, pour toutes les offres de la base. Une
@@ -15,7 +15,7 @@ type ScoringRow = ScoringInput & { id: number; ai_review: string | null; descrip
  */
 export function loadScoringRows(): ScoringRow[] {
   const rows = getDb()
-    .prepare("SELECT id, title, company, country, location, description_text, contract_type, ai_review, description_status FROM offres")
+    .prepare("SELECT id, title, company, country, location, description_text, contract_type, ai_review, description_status, duplicate_of FROM offres")
     .all() as ScoringRow[];
   return rows.map((r) =>
     r.description_status === "failed" ? { ...r, description_text: "", language_text: r.description_text } : r
@@ -27,13 +27,31 @@ export function loadCorpus(): Corpus {
   return buildCorpus(loadScoringRows());
 }
 
-/** Relectures par l'IA encore valables pour ce profil, alignées sur `rows`. */
+const SEVERITY: Record<Verdict, number> = { postuler: 0, a_tenter: 1, hors_profil: 2 };
+
+/**
+ * Relectures par l'IA encore valables pour ce profil, alignées sur `rows`.
+ * Une même annonce publiée sur deux sources n'a qu'un avis, le plus sévère de
+ * son groupe de doublons : relue deux fois, elle sortait « hors profil » sur
+ * HelloWork et « à tenter » sur France Travail, et la liste montrait la
+ * version la plus clémente (audit d'octobre 2026). Une offre du groupe encore
+ * jamais relue prend cet avis, sans nouvel appel payant.
+ */
 export function currentReviews(profile: ProfileFull, rows: ScoringRow[]): (AiReview | null)[] {
   const pHash = profileHash(profile);
-  return rows.map((r) => {
+  const own = rows.map((r) => {
     const review = parseJson<AiReview | null>(r.ai_review, null);
     return isReviewCurrent(review, pHash, offerHash(r)) ? review : null;
   });
+  const groupOf = (r: ScoringRow) => r.duplicate_of ?? r.id;
+  const strictest = new Map<number, AiReview>();
+  own.forEach((review, i) => {
+    if (!review || !isReviewUsable(review)) return;
+    const group = groupOf(rows[i]);
+    const kept = strictest.get(group);
+    if (!kept || SEVERITY[effectiveVerdict(review)] > SEVERITY[effectiveVerdict(kept)]) strictest.set(group, review);
+  });
+  return rows.map((r, i) => strictest.get(groupOf(r)) ?? own[i]);
 }
 
 /**
@@ -56,7 +74,7 @@ export function rescoreAllOffres(profile: ProfileFull): number {
  * les offres déjà collectées qu'au prochain scan ou au prochain enregistrement
  * du profil — 1 103 offres classées selon l'ancienne règle d'ici là.
  */
-export const SCORING_VERSION = "2026-10-14.3";
+export const SCORING_VERSION = "2026-10-14.4";
 const SETTING = "scoring:version";
 
 /** Recalcule toutes les notes si elles datent d'une autre version de la note ou de la relecture. */

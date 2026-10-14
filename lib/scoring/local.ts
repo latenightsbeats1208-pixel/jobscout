@@ -18,7 +18,7 @@ import {
 import { assessSeniority, profileExperienceYears } from "./seniority";
 import { assessHierarchy, profileRanks, type Rank } from "./hierarchy";
 import { assessLanguage, profileLanguages, type Mastery } from "./language";
-import { aiFactor, isReviewUsable, type AiReview } from "./review";
+import { aiFactor, effectiveVerdict, isReviewUsable, reviewReason, type AiReview } from "./review";
 import { withoutGenderForms } from "@/lib/scan/query-rewrite";
 import { parseSearchArea, type SearchArea } from "@/lib/geo/fr";
 import { zoneFit } from "@/lib/geo/locate";
@@ -525,7 +525,9 @@ function scorePrepared(
 
   const parts: string[] = [];
   if (exclusions.length) parts.push(`Hors critères : ${exclusions[0]}`);
-  if (review?.reason) parts.push(`IA : ${review.reason}`);
+  const verdict = review ? effectiveVerdict(review) : null;
+  const aiReason = review ? reviewReason(review) : "";
+  if (aiReason) parts.push(`IA : ${aiReason}`);
   if (shortAd) parts.push("relecture IA : annonce trop courte pour juger les exigences");
   // Sans relecture, le détail local ; avec, il n'ajouterait rien à celle-ci.
   if (!review) {
@@ -557,8 +559,8 @@ function scorePrepared(
   // offre pour savoir pourquoi elle remontait (audit d'octobre 2026). Elle dit
   // désormais la raison principale et le premier défaut.
   const plus =
-    review?.verdict === "postuler"
-      ? review.reason
+    verdict === "postuler"
+      ? aiReason
       : title.best && title.score >= 50
       ? `intitulé proche de « ${title.best} »`
       : skills.anchoredMatched.length
@@ -568,7 +570,7 @@ function scorePrepared(
       : null;
   const defects = [
     exclusions.length ? `hors critères : ${exclusions[0]}` : null,
-    review && review.verdict !== "postuler" ? review.reason : null,
+    verdict && verdict !== "postuler" ? aiReason : null,
     otherStack ? `autre langage (${otherStack})` : null,
     zone.fit === "hors" ? `hors de votre zone (${zone.place})` : zone.fit === "proche" ? `près de votre zone (${zone.place})` : null,
     contract.freelance ? "freelance" : null,
@@ -593,7 +595,7 @@ function scorePrepared(
       seniority: seniority.score,
       ...(zone.fit ? { location: zone.fit === "dans" ? 100 : zone.fit === "proche" ? 70 : 20 } : {}),
       ...(exclusions.length ? { excluded: exclusions.join(" ; ") } : {}),
-      ...(review ? { ai_verdict: review.verdict } : {}),
+      ...(verdict ? { ai_verdict: verdict } : {}),
       ...(plus ? { plus } : {}),
       ...(minus ? { minus } : {}),
     },

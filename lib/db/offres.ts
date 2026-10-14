@@ -260,12 +260,12 @@ export function getScoreScale(): ScoreScale | null {
   return getOffresCache().scale;
 }
 
-type DisplayBreakdown = { reason?: string; ai_verdict?: string; excluded?: string; plus?: string; minus?: string };
+type DisplayBreakdown = { reason?: string; ai_verdict?: string; excluded?: string; plus?: string; minus?: string; location?: number };
 
 /** Libellé, couleur, raison et défaut d'une note, à partir de sa décomposition enregistrée. */
 function displayOf(score: number | null, breakdown: string | null, scale: ScoreScale | null) {
   const bd = parseJson<DisplayBreakdown | null>(breakdown, null);
-  const d = scoreDisplay(score ?? 0, { scale, verdict: bd?.ai_verdict, excluded: !!bd?.excluded });
+  const d = scoreDisplay(score ?? 0, { scale, verdict: bd?.ai_verdict, excluded: !!bd?.excluded, outOfZone: bd?.location === 20 });
   return {
     score_reason: bd?.reason ?? null,
     score_label: d.label,

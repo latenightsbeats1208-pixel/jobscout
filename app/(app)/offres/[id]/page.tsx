@@ -15,6 +15,7 @@ import { OfferLiveness } from "@/components/app/offer-liveness";
 import { formatRelativeDate, fromSqliteUtc, scoreDisplay } from "@/lib/utils";
 import { CONTRACT_LABELS } from "@/lib/contracts";
 import { SOURCES_META } from "@/lib/sources-meta";
+import { effectiveVerdict, reviewReason } from "@/lib/scoring/review";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,7 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
     scale: getScoreScale(),
     verdict: offre.score_breakdown?.ai_verdict,
     excluded: !!offre.score_breakdown?.excluded,
+    outOfZone: offre.score_breakdown?.location === 20,
   });
   const sourceLabel = SOURCES_META.find((source) => source.id === offre.source)?.label ?? offre.source;
   const contractLabel = offre.contract_category !== "autre" ? CONTRACT_LABELS[offre.contract_category] : null;
@@ -121,7 +123,7 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
               {offre.score_breakdown.reason && <p className="mt-5 border-t border-border pt-4 text-small text-textSecondary">{offre.score_breakdown.reason}</p>}
             </section>
           )}
-          {offre.ai_review && offre.score_breakdown?.ai_verdict && <AiReviewPanel review={offre.ai_review} />}
+          {offre.ai_review && offre.score_breakdown?.ai_verdict && <AiReviewPanel review={offre.ai_review} outOfZone={offre.score_breakdown?.location === 20} />}
         </aside>
 
         <article className="order-2 min-w-0 xl:order-1">
@@ -200,12 +202,13 @@ const COVERAGE_MARK: Record<string, { mark: string; label: string; className: st
 };
 
 /** Exigences indispensables relevées par l'IA, et ce que le profil en couvre. */
-function AiReviewPanel({ review }: { review: NonNullable<OffreFiltered["ai_review"]> }) {
+function AiReviewPanel({ review, outOfZone }: { review: NonNullable<OffreFiltered["ai_review"]>; outOfZone: boolean }) {
   return (
     <section aria-labelledby="ai-review-title" className="glass-panel p-5">
       <h2 id="ai-review-title" className="text-h3">Relecture par l&apos;IA</h2>
       <p className="mt-1 text-small text-textSecondary">
-        {VERDICT_LABEL[review.verdict] ?? review.verdict} · {review.skills_fit} % des compétences indispensables couvertes
+        {VERDICT_LABEL[effectiveVerdict(review)] ?? review.verdict}
+        {outOfZone && effectiveVerdict(review) === "postuler" && " — mais l'offre est hors de votre zone"} · {review.skills_fit} % des compétences indispensables couvertes
       </p>
       {review.must_haves.length > 0 && (
         <ul className="mt-4 space-y-2">
@@ -227,7 +230,7 @@ function AiReviewPanel({ review }: { review: NonNullable<OffreFiltered["ai_revie
           })}
         </ul>
       )}
-      {review.reason && <p className="mt-4 border-t border-border pt-4 text-small text-textSecondary">{review.reason}</p>}
+      {reviewReason(review) && <p className="mt-4 border-t border-border pt-4 text-small text-textSecondary">{reviewReason(review)}</p>}
     </section>
   );
 }

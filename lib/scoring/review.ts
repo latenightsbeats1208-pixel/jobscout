@@ -211,7 +211,33 @@ const VERDICT_FACTOR: Record<Verdict, number> = {
 const OTHER_SPECIALTY_FACTOR = 0.88;
 
 export function aiFactor(r: AiReview): number {
-  return VERDICT_FACTOR[r.verdict] * (r.role_fit >= 90 ? 1 : OTHER_SPECIALTY_FACTOR);
+  return VERDICT_FACTOR[effectiveVerdict(r)] * (r.role_fit >= 90 ? 1 : OTHER_SPECIALTY_FACTOR);
+}
+
+/**
+ * Titres que la loi ou la profession exigent pour exercer. Leur absence bloque
+ * la candidature, et ce n'est pas au modèle d'en décider : la même annonce de
+ * chef d'équipe SSIAP 2, relue deux fois, est sortie « hors profil » puis
+ * « à tenter » (« votre profil SSIAP 1 expérimenté reste défendable »), et la
+ * version à 63 s'affichait en tête (audit d'octobre 2026).
+ */
+const REGULATED =
+  /\b(?:ssiap\s*[23]|dipl[oô]me d['’ ]?[ée]tat|carte professionnelle|cnaps|permis\s+(?:c1?e?|d1?e?|ec|be)\b|inscription (?:à|a) l['’ ]?ordre)/i;
+
+/** Exigence réglementaire écrite dans l'annonce et absente du profil, s'il y en a une. */
+export function blockingRequirement(r: AiReview): MustHave | null {
+  return r.must_haves.find((m) => m.verified && m.covered === "non" && REGULATED.test(`${m.requirement} ${m.citation}`)) ?? null;
+}
+
+/** Le verdict du modèle, sauf titre obligatoire manquant : alors « hors profil », toujours. */
+export function effectiveVerdict(r: AiReview): Verdict {
+  return blockingRequirement(r) ? "hors_profil" : r.verdict;
+}
+
+/** La raison à montrer : celle du modèle, ou le titre obligatoire qui manque. */
+export function reviewReason(r: AiReview): string {
+  const blocking = blockingRequirement(r);
+  return blocking ? `${blocking.requirement} : exigé pour exercer, absent de votre profil.` : r.reason;
 }
 
 /**

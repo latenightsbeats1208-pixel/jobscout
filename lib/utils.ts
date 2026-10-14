@@ -97,10 +97,13 @@ const VERDICT_DISPLAY: Record<string, { tone: ScoreTone; label: string }> = {
  */
 export function scoreDisplay(
   score: number,
-  opts: { scale: ScoreScale | null; verdict?: string | null; excluded?: boolean }
+  opts: { scale: ScoreScale | null; verdict?: string | null; excluded?: boolean; outOfZone?: boolean }
 ): { bg: string; fg: string; label: string; tone: ScoreTone } {
   const pick = (tone: ScoreTone, label: string) => ({ ...TONE_COLORS[tone], tone, label });
   if (opts.excluded) return pick("faible", "Hors de vos critères");
+  // L'IA juge le poste, pas la distance : elle disait « postuler » pour un poste
+  // sur site à Nice proposé à un développeur de Brest (audit d'octobre 2026).
+  if (opts.verdict === "postuler" && opts.outOfZone) return pick("bon", "Relue par l'IA : à postuler, mais hors de votre zone");
   const verdict = opts.verdict ? VERDICT_DISPLAY[opts.verdict] : undefined;
   if (verdict) return pick(verdict.tone, verdict.label);
   const { scale } = opts;

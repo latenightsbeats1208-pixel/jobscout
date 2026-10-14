@@ -7,11 +7,13 @@ import { BATCH_SIZE, descriptionExcerpt, reviewOffres } from "@/lib/ai/review-of
 import {
   REVIEW_VERSION,
   aiFactor,
+  effectiveVerdict,
   isReviewCurrent,
   isReviewUsable,
   offerHash,
   parseReview,
   profileHash,
+  reviewReason,
 } from "@/lib/scoring/review";
 import { scoreOffresLocal } from "@/lib/scoring/local";
 import { EVAL_PROFILES } from "./eval/profiles";
@@ -169,6 +171,35 @@ describe("note et filtre de compétences", () => {
   });
 });
 
+describe("titre obligatoire pour exercer", () => {
+  // Audit d'octobre 2026 : la même annonce de chef d'équipe SSIAP 2, relue deux fois,
+  // est sortie « hors profil » puis « à tenter » (« votre profil SSIAP 1 reste défendable »).
+  const ad = adWith("Diplôme SSIAP 2 à jour indispensable", "Carte professionnelle CNAPS", "Bonne présentation");
+  const review = (covered: string) =>
+    parseReview(
+      { verdict: "a_tenter", role_fit: 100, reason: "Votre profil SSIAP 1 expérimenté reste défendable.", must_haves: [mh("Diplôme SSIAP 2 à jour", covered, "diplome", "Diplôme SSIAP 2 à jour indispensable"), mh("Bonne présentation", "oui")] },
+      meta,
+      ad
+    )!;
+
+  it("absent du profil : « hors profil », quoi qu'en dise le modèle, et la raison le nomme", () => {
+    const r = review("non");
+    expect(effectiveVerdict(r)).toBe("hors_profil");
+    expect(aiFactor(r)).toBe(0.6);
+    expect(reviewReason(r)).toBe("Diplôme SSIAP 2 à jour : exigé pour exercer, absent de votre profil.");
+  });
+
+  it("présent, ou seulement en cours : le verdict du modèle reste", () => {
+    expect(effectiveVerdict(review("oui"))).toBe("a_tenter");
+    expect(effectiveVerdict(review("partiel"))).toBe("a_tenter");
+  });
+
+  it("une habilitation ou un CACES ne bloquent pas : ils se passent chez l'employeur", () => {
+    const r = parseReview({ verdict: "postuler", role_fit: 100, must_haves: [mh("CACES R489", "non")] }, meta, adWith("CACES R489"))!;
+    expect(effectiveVerdict(r)).toBe("postuler");
+  });
+});
+
 describe("extrait d'annonce envoyé au modèle", () => {
   it("garde le début du poste et le bloc « profil recherché » d'une annonce longue", () => {
     const text = `${"Présentation de l'entreprise. ".repeat(80)}Profil recherché : maîtrise de SQL et de la recette.${" Avantages.".repeat(200)}`;
@@ -229,5 +260,24 @@ describe("relecture de bout en bout", () => {
     expect(failedBatches).toBe(0);
     expect(reviews.map((r) => r!.verdict)).toEqual(offres.map((o) => (o.title.includes("Java") ? "hors_profil" : "postuler")));
     expect(reviews[0]!.offer_hash).toBe(offerHash(offres[0]));
+  });
+});
+
+describe("un avis par annonce publiée deux fois", () => {
+  it("les doublons partagent l'avis le plus sévère, et une copie jamais relue le reçoit", async () => {
+    const { currentReviews } = await import("@/lib/scoring/rescore");
+    const offer = (id: number, duplicate_of: number | null, text: string) => ({
+      id, duplicate_of, title: "Chef d'équipe SSIAP 2", company: "Triomphe", country: "France", location: "Chennevières",
+      description_text: text, contract_type: "CDI", description_status: "ok", ai_review: null as string | null,
+    });
+    const review = (o: { title: string; description_text: string }, verdict: string) =>
+      JSON.stringify(parseReview({ verdict, role_fit: 100, reason: verdict, must_haves: [mh("Encadrement d'équipe", "oui")] }, { profile_hash: profileHash(ba), offer_hash: offerHash(o), model: "m" }, adWith("Encadrement d'équipe")));
+    const ft = offer(23, null, "Annonce France Travail. Encadrement d'équipe.");
+    const hw = offer(57, 23, "Annonce HelloWork. Encadrement d'équipe.");
+    const lw = offer(58, 23, "Troisième copie, jamais relue. Encadrement d'équipe.");
+    ft.ai_review = review(ft, "a_tenter");
+    hw.ai_review = review(hw, "hors_profil");
+    const reviews = currentReviews(ba, [ft, hw, lw]);
+    expect(reviews.map((r) => r?.verdict)).toEqual(["hors_profil", "hors_profil", "hors_profil"]);
   });
 });
