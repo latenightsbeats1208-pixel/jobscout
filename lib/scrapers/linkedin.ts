@@ -2,7 +2,7 @@ import "server-only";
 import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./base";
 import { htmlToText, newContext } from "./base";
 import { detectVie } from "@/lib/vie";
-import { normalizeCountryName, strictCountryName } from "@/lib/countries";
+import { countryNameEnglish, normalizeCountryName, strictCountryName } from "@/lib/countries";
 import { searchAreaCity, type SearchArea } from "@/lib/geo/fr";
 
 const SOURCE = "linkedin";
@@ -27,7 +27,10 @@ type ListingCard = {
  */
 export function linkedinLocations(country: string, area: SearchArea | null | undefined): string[] {
   const city = area && country === "France" ? searchAreaCity(area) : null;
-  return city ? [city, country] : [country];
+  // LinkedIn ne comprend que les noms anglais : « Allemagne » ramenait 19 offres
+  // des États-Unis sur 75 (audit d'octobre 2026), « Germany » des offres allemandes.
+  const name = countryNameEnglish(country) ?? country;
+  return city ? [city, name] : [name];
 }
 
 export const linkedinScraper: Scraper = {
@@ -363,7 +366,10 @@ export function linkedinCountry(
 /** « Paris, Île-de-France, France » → « France » ; « Montréal, QC, Canada » → « Canada ». */
 function inferCountryFromLocation(location: string | null | undefined): string | null {
   if (!location) return null;
-  const parts = location.split(",").map((x) => x.trim()).filter(Boolean);
+  // Deux lettres après une virgule, c'est un État américain ou une province
+  // canadienne (« Wilmington, DE », « Los Angeles, CA ») : jamais l'Allemagne
+  // ni le Canada. LinkedIn écrit les pays en toutes lettres.
+  const parts = location.split(",").map((x) => x.trim()).filter((x) => x.length > 2);
   // Strict : « Lyon » ou « Bruxelles et périphérie » ne doivent jamais devenir un pays.
   for (let i = parts.length - 1; i >= 0; i--) {
     const c = strictCountryName(parts[i]);

@@ -65,9 +65,16 @@ function cleanCity(part: string): string {
     .replace(/ ste /g, " sainte ");
 }
 
+/**
+ * Lieux qui ne sont pas des lieux : « EU » (une offre ouverte dans toute
+ * l'Union européenne) était lu comme la commune d'Eu, en Seine-Maritime, et
+ * l'offre passait « hors zone » (audit d'octobre 2026).
+ */
+const NOT_A_PLACE = new Set(["eu", "ue", "emea", "europe", "european union", "union europeenne", "remote", "teletravail", "worldwide"]);
+
 /** Département et région d'un lieu français ; null quand on ne sait pas. */
 export function locateFr(location: string | null | undefined): Located | null {
-  if (!location?.trim()) return null;
+  if (!location?.trim() || NOT_A_PLACE.has(key(location))) return null;
   // Code entre parenthèses ou en fin : « Saint-Nazaire - 44 », « Le Grand-Quevilly (76) ».
   const code = location.match(/\((\d{2,3}|2[AB])\)|(?:^|\s-\s)(\d{2,3}|2[AB])(?:\s|$)/i);
   const coded = (code?.[1] ?? code?.[2])?.toUpperCase();

@@ -288,6 +288,9 @@ describe("LinkedIn", () => {
     expect(linkedinCountry("CH", "Genève", "France")).toBe("Suisse");
     // Recherche sans pays : rien n'est deviné.
     expect(linkedinCountry(null, "Lyon et périphérie", null)).toBeNull();
+    // Un État américain n'est pas un pays : « DE » (Delaware) n'est pas l'Allemagne.
+    expect(linkedinCountry(null, "Wilmington, DE", null)).toBeNull();
+    expect(linkedinCountry(null, "Los Angeles, CA, United States", "Allemagne")).toBe("États-Unis");
   });
 });
 
@@ -298,8 +301,10 @@ describe("LinkedIn : chercher dans la zone avant tout le pays", () => {
     expect(linkedinLocations("France", parseSearchArea("D:13"))).toEqual(["Marseille, France", "France"]);
     expect(linkedinLocations("France", parseSearchArea("R:84"))).toEqual(["Lyon, France", "France"]);
     expect(linkedinLocations("France", null)).toEqual(["France"]);
-    // La zone est française : elle ne s'applique pas à un autre pays.
-    expect(linkedinLocations("Suisse", parseSearchArea("D:13"))).toEqual(["Suisse"]);
+    // La zone est française : elle ne s'applique pas à un autre pays. Et LinkedIn
+    // ne comprend que les noms anglais (« Allemagne » ramenait des offres américaines).
+    expect(linkedinLocations("Suisse", parseSearchArea("D:13"))).toEqual(["Switzerland"]);
+    expect(linkedinLocations("Allemagne", null)).toEqual(["Germany"]);
     // Outre-mer : le territoire lève l'homonymie avec la Seine-Saint-Denis.
     expect(searchAreaCity(parseSearchArea("D:974")!)).toBe("Saint-Denis, Réunion");
     expect(searchAreaCity(parseSearchArea("D:93")!)).toBe("Bobigny, France");

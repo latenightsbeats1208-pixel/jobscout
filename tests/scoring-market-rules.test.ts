@@ -25,6 +25,10 @@ describe("situer une offre", () => {
     expect(locateFr("Hauts-de-France")).toMatchObject({ dept: null, region: "32" });
     expect(locateFr("Paris, Île-de-France, France")?.dept).toBe("75");
     expect(locateFr("Région métropolitaine de Kansas City")).toBeNull();
+    // « EU » : toute l'Union européenne, pas la commune d'Eu (qui garde son département quand il est écrit).
+    expect(locateFr("EU")).toBeNull();
+    expect(locateFr("Remote")).toBeNull();
+    expect(locateFr("76 - Eu")?.dept).toBe("76");
   });
 
   it("dans la zone, près d'elle, ou hors zone ; rien de pénalisé sans lieu connu", () => {
