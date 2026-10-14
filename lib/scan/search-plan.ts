@@ -1,5 +1,6 @@
 import type { ProfileFull } from "@/lib/cv/types";
 import { parseSearchArea, type SearchArea } from "@/lib/geo/fr";
+import { frenchTitle, rewriteTitle } from "./query-rewrite";
 
 /**
  * Ce qu'un scan cherche, déduit du profil. Partagé entre le serveur (le scan)
@@ -10,6 +11,11 @@ import { parseSearchArea, type SearchArea } from "@/lib/geo/fr";
  * contenaient ces mots, sans rapport avec le métier recherché. Les secteurs ne
  * servent plus de requête que lorsque le profil n'a ni poste visé ni
  * expérience ; ils restent des mots-clés pour la note.
+ *
+ * Chaque intitulé est réécrit avant d'être envoyé (voir query-rewrite.ts), et
+ * un intitulé anglais reçoit sa traduction quand la France fait partie des
+ * pays visés : « Mechanical Design Engineer » ne trouvait qu'une offre sur
+ * France Travail pour un métier courant à Toulouse.
  */
 
 /** Au-delà, un scan s'allonge sans élargir beaucoup la recherche. */
@@ -38,16 +44,30 @@ function unique(values: string[]): string[] {
   return out;
 }
 
-export function buildSearchPlan(profile: Pick<ProfileFull, "target_titles" | "experiences" | "sectors" | "search_area">): SearchPlan {
+export function buildSearchPlan(
+  profile: Pick<ProfileFull, "target_titles" | "experiences" | "sectors" | "search_area"> & { target_countries?: string[] | null }
+): SearchPlan {
   const area = parseSearchArea(profile.search_area);
+  const france = !profile.target_countries?.length || profile.target_countries.some((c) => c.trim().toLowerCase() === "france");
   const titles = unique(profile.target_titles ?? []);
-  if (titles.length) return { queries: titles.slice(0, MAX_QUERIES), origin: "postes_vises", area };
+  if (titles.length) return { queries: toQueries(titles, france).slice(0, MAX_QUERIES), origin: "postes_vises", area };
   // Sans poste visé : les intitulés des expériences récentes, hors stages et alternances.
   const past = unique(profile.experiences.map((e) => e.title).filter((t) => t && !TRAINEE.test(t))).slice(0, 2);
-  if (past.length) return { queries: past, origin: "experiences", area };
+  if (past.length) return { queries: toQueries(past, france).slice(0, MAX_QUERIES), origin: "experiences", area };
   const sectors = unique(profile.sectors ?? []);
   if (sectors.length) return { queries: sectors.slice(0, MAX_QUERIES), origin: "secteurs", area };
   return { queries: [], origin: "aucune", area };
+}
+
+/** Intitulés réécrits, chacun suivi de sa traduction française s'il est anglais. */
+function toQueries(titles: string[], france: boolean): string[] {
+  return unique(
+    titles.flatMap((title) => {
+      const rewritten = rewriteTitle(title);
+      const french = france ? frenchTitle(rewritten[0]) : null;
+      return french ? [...rewritten, french] : rewritten;
+    })
+  );
 }
 
 /**

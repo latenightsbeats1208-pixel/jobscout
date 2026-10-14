@@ -24,7 +24,8 @@ describe("ce qu'un scan cherche", () => {
       sectors: ["tech"],
       search_area: "",
     });
-    expect(plan.queries).toEqual(["Sales Representative", "Vendeur"]);
+    // Sans pays visé, la France est comprise : l'intitulé anglais reçoit sa traduction.
+    expect(plan.queries).toEqual(["Sales Representative", "Commercial", "Vendeur"]);
     expect(plan.origin).toBe("experiences");
   });
 
