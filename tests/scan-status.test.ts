@@ -100,6 +100,16 @@ describe("statut du scan", () => {
     expect(lines).not.toContain("[linkedin] 0 vue, 0 insérée, 0 échec");
   });
 
+  it("relecture automatique demandée sans modèle configuré : sautée, sans faire échouer le scan", async () => {
+    const { setSetting } = await import("@/lib/db");
+    setSetting("review:auto", "1");
+    enabled = [working];
+    const { done, lines } = await scan();
+    setSetting("review:auto", "0");
+    expect(done.status).toBe("done");
+    expect(lines.some((l) => l.startsWith("Relecture IA"))).toBe(false);
+  });
+
   it("toutes les sources répondent : scan terminé", async () => {
     enabled = [working];
     const { done, run, lines } = await scan();

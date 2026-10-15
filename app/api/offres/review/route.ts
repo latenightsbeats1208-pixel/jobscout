@@ -1,17 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProfile } from "@/lib/db/queries";
-import { getDb, parseJson } from "@/lib/db";
-import { setOffreReview } from "@/lib/db/offres";
-import { syncDuplicates } from "@/lib/db/duplicates";
 import { getLlmConfig, LlmNotConfiguredError } from "@/lib/ai/client";
 import { genericFailure, translateAiError } from "@/lib/ai/errors";
-import { reviewOffres } from "@/lib/ai/review-offres";
-import { currentReviews, loadScoringRows, rescoreAllOffres } from "@/lib/scoring/rescore";
+import { AUTO_REVIEW_LIMIT, reviewTopOffres } from "@/lib/ai/review-top";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const DEFAULT_LIMIT = 30;
+const DEFAULT_LIMIT = AUTO_REVIEW_LIMIT;
 const MAX_LIMIT = 60;
 
 /**
@@ -30,47 +26,9 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => ({}))) as { limit?: number };
     const limit = Math.max(1, Math.min(MAX_LIMIT, Math.trunc(Number(body.limit) || DEFAULT_LIMIT)));
 
-    syncDuplicates();
-    const rows = loadScoringRows();
-    const cached = currentReviews(profile, rows);
-    const meta = new Map(
-      (getDb().prepare("SELECT id, score, score_breakdown, duplicate_of, closed_at FROM offres").all() as {
-        id: number;
-        score: number | null;
-        score_breakdown: string | null;
-        duplicate_of: number | null;
-        closed_at: string | null;
-      }[]).map((r) => [r.id, r])
-    );
-    // Les meilleures offres encore dans les critères — langue, pays, expérience
-    // sont jugés localement et ne coûtent rien.
-    const head = rows
-      .map((r, i) => ({ r, cached: cached[i], m: meta.get(r.id) }))
-      .filter((x) => !parseJson<{ excluded?: string } | null>(x.m?.score_breakdown, null)?.excluded)
-      // Une description d'un autre poste ne vaut pas un appel payant, ni une
-      // offre retirée, ni un doublon d'une offre déjà dans la liste.
-      .filter((x) => x.r.description_status !== "failed")
-      .filter((x) => x.m?.duplicate_of == null && !x.m?.closed_at)
-      .sort((a, b) => (b.m?.score ?? 0) - (a.m?.score ?? 0))
-      .slice(0, limit);
-    const todo = head.filter((x) => !x.cached);
+    const { reviewed, cached, unreadable, failedBatches } = await reviewTopOffres(profile, limit);
 
-    const { reviews, failedBatches } = await reviewOffres(profile, todo.map((x) => x.r));
-    let reviewed = 0;
-    reviews.forEach((review, i) => {
-      if (!review) return;
-      setOffreReview(todo[i].r.id, review);
-      reviewed++;
-    });
-    rescoreAllOffres(profile);
-
-    return NextResponse.json({
-      ok: true,
-      reviewed,
-      cached: head.length - todo.length,
-      unreadable: todo.length - reviewed,
-      failedBatches,
-    });
+    return NextResponse.json({ ok: true, reviewed, cached, unreadable, failedBatches });
   } catch (e) {
     const ai = translateAiError(e);
     if (ai) return NextResponse.json({ error: ai.message }, { status: ai.status });

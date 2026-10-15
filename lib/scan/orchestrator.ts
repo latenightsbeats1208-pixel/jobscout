@@ -13,6 +13,9 @@ import { searchAreaLabel } from "@/lib/geo/fr";
 import { getProfile } from "@/lib/db/queries";
 import { getDb } from "@/lib/db";
 import type { ProgressEvent } from "@/lib/scrapers/base";
+import { AUTO_REVIEW_LIMIT, autoReviewEnabled, reviewTopOffres } from "@/lib/ai/review-top";
+import { getLlmConfig } from "@/lib/ai/client";
+import { translateAiError } from "@/lib/ai/errors";
 
 /**
  * « partial » : au moins une source en échec (ou une étape de fin de scan) ;
@@ -224,6 +227,26 @@ export async function* runScan(
     const message = e instanceof Error ? e.message : String(e);
     failures.push({ source: "regroupement des doublons", message });
     yield { kind: "error", source: "doublons", message };
+  }
+
+  // Relecture par l'IA des meilleures offres, si la personne l'a demandée dans
+  // ses réglages : elle est payante (sa clé), donc jamais d'office. Seules les
+  // offres pas encore relues coûtent un appel. Un échec ne fait pas échouer le scan.
+  if (autoReviewEnabled() && getLlmConfig().mode !== "unset") {
+    try {
+      const r = await reviewTopOffres(profile, AUTO_REVIEW_LIMIT);
+      const plural = (n: number) => (n > 1 ? "s" : "");
+      say(
+        r.reviewed || r.unreadable
+          ? `Relecture IA : ${r.reviewed} offre${plural(r.reviewed)} relue${plural(r.reviewed)}` +
+              (r.unreadable ? `, ${r.unreadable} sans réponse exploitable` : "") +
+              (r.cached ? `, ${r.cached} déjà relue${plural(r.cached)}` : "")
+          : "Relecture IA : les meilleures offres étaient déjà relues"
+      );
+      refreshDuplicates();
+    } catch (e) {
+      say(`Relecture IA impossible : ${translateAiError(e)?.message ?? (e instanceof Error ? e.message : String(e))}`);
+    }
   }
 
   const status: ScanStatus =
