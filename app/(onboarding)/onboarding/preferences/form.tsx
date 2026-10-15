@@ -74,10 +74,9 @@ export function PreferencesForm() {
 
   async function save() {
     if (!profile) return;
-    if (profile.sectors.length === 0) {
-      setError("Ajoutez au moins un secteur cible.");
-      return;
-    }
+    // Le secteur n'est plus obligatoire : l'extraction ne le remplit jamais (0 CV
+    // sur 8 dans l'audit d'octobre 2026), il ne pèse que 10 % de la note, et les
+    // sources cherchent les postes visés, pas les secteurs.
     if (profile.target_countries.length === 0) {
       setError("Sélectionnez au moins un pays.");
       return;
@@ -149,9 +148,9 @@ export function PreferencesForm() {
       </Card>
 
       <Card>
-        <h2 className="text-h3 mb-1">Secteurs cibles</h2>
+        <h2 className="text-h3 mb-1">Secteurs cibles <span className="text-small font-normal text-textSecondary">· facultatif</span></h2>
         <p className="text-small text-textSecondary mb-4">
-          Mots-clés des secteurs / branches qui vous intéressent.
+          Mots-clés des secteurs / branches qui vous intéressent. Ils départagent les offres sans changer ce qui est cherché.
         </p>
         <div className="flex flex-wrap gap-2 mb-3">
           {profile.sectors.map((s) => (
@@ -191,6 +190,7 @@ export function PreferencesForm() {
               ["vie", "V.I.E"],
               ["stage", "Stage"],
               ["alternance", "Alternance"],
+              ["freelance", "Freelance / mission"],
             ] as const
           ).map(([id, label]) => (
             <Chip
@@ -208,6 +208,14 @@ export function PreferencesForm() {
               {label}
             </Chip>
           ))}
+        </div>
+        <div className="mt-4">
+          <Chip active={profile.remote === "full"} onClick={() => update({ remote: profile.remote === "full" ? "" : "full" })}>
+            Télétravail complet recherché
+          </Chip>
+          <p className="mt-2 text-caption text-textSecondary">
+            Les offres en télétravail complet passent alors devant ; les postes sur site loin de votre zone restent en retrait.
+          </p>
         </div>
       </Card>
 

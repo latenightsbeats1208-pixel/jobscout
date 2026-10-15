@@ -45,6 +45,9 @@ export function getDb(): DatabaseSync {
   try {
     db.exec(`ALTER TABLE scan_runs ADD COLUMN summary TEXT`);
   } catch {}
+  try {
+    db.exec(`ALTER TABLE profile ADD COLUMN remote TEXT NOT NULL DEFAULT ''`);
+  } catch {}
   // Offres collectées avant la colonne : leur dernière collecte, faute de mieux.
   db.exec("UPDATE offres SET first_seen_at = scraped_at WHERE first_seen_at IS NULL");
   repairLegacyTalentRows(db);

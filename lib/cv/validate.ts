@@ -1,6 +1,8 @@
 import "server-only";
 import type { ExtractedCV } from "./types";
 import type { ProfileFull } from "./types";
+import { searchAreaFromText } from "@/lib/geo/locate";
+import { strictCountryName } from "@/lib/countries";
 
 /**
  * Convertit la sortie Claude → ProfileFull, en :
@@ -105,6 +107,8 @@ export function buildProfileFromExtraction(
     }
   }
 
+  const search = searchPreferences(ex);
+
   return {
     full_name: ex.identity.full_name,
     email: ex.identity.email,
@@ -116,18 +120,49 @@ export function buildProfileFromExtraction(
     raw_cv_text: rawCvText,
     sectors: [],
     target_titles: [...new Set((ex.target_titles ?? []).map((t) => t.trim()).filter(Boolean))].slice(0, 3),
-    target_countries: [],
-    // Zone de recherche : tout le pays tant que l'utilisateur n'en choisit pas une.
-    search_area: "",
+    target_countries: search.countries,
+    search_area: search.area,
     sources_enabled: [],
-    // Même défaut que le schéma zod, la colonne SQL et l'écran de préférences.
-    preferred_contracts: ["cdi", "cdd"],
+    preferred_contracts: search.contracts,
+    remote: search.remote,
     extraction_confidence: computeConfidence(ex),
     experiences: expCleaned,
     educations,
     skills,
     languages: Array.from(langMap.values()),
     certifications: Array.from(certMap.values()),
+  };
+}
+
+type PreferredContract = ProfileFull["preferred_contracts"][number];
+const CONTRACTS: Record<string, PreferredContract> = {
+  cdi: "cdi", cdd: "cdd", interim: "interim", freelance: "freelance", stage: "stage", alternance: "alternance", vie: "vie",
+};
+
+/**
+ * Zone, pays, contrats et télétravail : ce que le CV dit de la recherche, pour
+ * pré-remplir l'inscription au lieu de tout faire ressaisir (« En Alsace ou
+ * côté allemand, CDI » restait sans effet, audit d'octobre 2026). Sans zone
+ * écrite, celle du lieu de résidence : on cherche d'abord près de chez soi. Le
+ * reste garde les défauts d'avant (CDI et CDD, télétravail indifférent).
+ */
+function searchPreferences(ex: ExtractedCV): {
+  area: string;
+  countries: string[];
+  contracts: PreferredContract[];
+  remote: "" | "full";
+} {
+  const prefs = ex.search_preferences ?? null;
+  const area = searchAreaFromText(prefs?.zone) ?? searchAreaFromText(ex.identity.location) ?? "";
+  const named = [...new Set((prefs?.countries ?? []).map((c) => strictCountryName(c)).filter((c): c is string => !!c))];
+  const countries = named.length ? named : area ? ["France"] : [];
+  const contracts = [...new Set((prefs?.contracts ?? []).map((c) => CONTRACTS[c.trim().toLowerCase()]).filter((c): c is PreferredContract => !!c))];
+  return {
+    area,
+    countries,
+    // Même défaut que le schéma zod, la colonne SQL et l'écran de préférences.
+    contracts: contracts.length ? contracts : ["cdi", "cdd"],
+    remote: prefs?.remote ? "full" : "",
   };
 }
 

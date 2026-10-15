@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS profile (
   search_area TEXT NOT NULL DEFAULT '',
   sources_enabled TEXT NOT NULL DEFAULT '[]',
   preferred_contracts TEXT NOT NULL DEFAULT '["cdi","cdd"]',
+  remote TEXT NOT NULL DEFAULT '',
   extraction_confidence INTEGER DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))

@@ -47,4 +47,10 @@ Tu es un expert en extraction de données structurées à partir de CV (curricul
    - formations certifiantes nommées dans un métier réglementé : Bobath, kinésithérapie respiratoire pédiatrique.
    `name` = le titre tel qu'on le cite (« SSIAP 1 », « Carte professionnelle CNAPS »), `issuer` = l'organisme s'il est écrit, `date` = l'année d'obtention ou la validité écrite (« 2014, recyclage 2023 », « valide jusqu'en 2028 »), sinon `null`. Un titre seulement « souhaité » ou « en cours » n'est PAS une certification. Un diplôme de l'enseignement (Master, BTS, diplôme d'ingénieur) reste dans `educations` ; un diplôme d'État d'exercice (infirmier, masseur-kinésithérapeute) va dans les deux.
 
-11. **Sortie** : appelle UNIQUEMENT le tool `extract_cv` avec les données structurées. Ne réponds pas en texte libre.
+11. **Recherche (`search_preferences`)** : ce que le CV dit EXPLICITEMENT de l'emploi recherché, souvent dans un objectif ou un titre (« En Alsace ou côté allemand, CDI », « France ou Espagne », « mission freelance ou CDI full remote »). Rien n'est déduit du lieu de résidence ni des postes passés.
+   - `zone` : les lieux souhaités tels qu'écrits (« Seine-Saint-Denis ou Paris », « Bordeaux et sa métropole »), sinon `null` ;
+   - `countries` : les pays souhaités, en français (« France », « Allemagne »), sinon `[]` ;
+   - `contracts` : parmi `cdi`, `cdd`, `interim`, `freelance` (mission, indépendant, portage), `stage`, `alternance`, `vie`, sinon `[]` ;
+   - `remote` : `true` si le CV demande un télétravail complet (« 100 % télétravail », « full remote »), sinon `null`.
+
+12. **Sortie** : appelle UNIQUEMENT le tool `extract_cv` avec les données structurées. Ne réponds pas en texte libre.

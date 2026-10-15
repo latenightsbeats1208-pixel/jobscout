@@ -319,7 +319,7 @@ function SearchCard({
         />
       </div>
 
-      <p className="text-caption uppercase text-textSecondary mb-2">Secteurs</p>
+      <p className="text-caption uppercase text-textSecondary mb-2">Secteurs · facultatif</p>
       <div className="flex flex-wrap gap-1.5 mb-2">
         {profile.sectors.map((s) => (
           <Chip
@@ -397,6 +397,7 @@ function SearchCard({
             ["vie", "V.I.E"],
             ["stage", "Stage"],
             ["alternance", "Alternance"],
+            ["freelance", "Freelance / mission"],
           ] as const
         ).map(([id, label]) => {
           const prefs = profile.preferred_contracts ?? ["cdi", "cdd"];
@@ -415,6 +416,12 @@ function SearchCard({
             </Chip>
           );
         })}
+      </div>
+
+      <div className="mb-4">
+        <Chip active={profile.remote === "full"} onClick={() => update({ remote: profile.remote === "full" ? "" : "full" })}>
+          Télétravail complet recherché
+        </Chip>
       </div>
 
       <p className="text-caption uppercase text-textSecondary mb-2">Sources</p>

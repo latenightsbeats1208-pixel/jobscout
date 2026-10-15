@@ -50,6 +50,7 @@ export function getProfile(): ProfileFull | null {
     search_area: profile.search_area ?? "",
     sources_enabled: parseJson(profile.sources_enabled, []),
     preferred_contracts: parseJson(profile.preferred_contracts, ["cdi", "cdd"]),
+    remote: profile.remote === "full" ? "full" : "",
     experiences: experiences.map((e) => ({
       ...e,
       bullet_points: parseJson(e.bullet_points, []),
@@ -71,8 +72,8 @@ export function saveProfile(input: Omit<ProfileFull, "id" | "created_at" | "upda
     db.prepare("DELETE FROM profile").run();
     const result = db
       .prepare(
-        `INSERT INTO profile (full_name, email, phone, location, linkedin_url, portfolio_url, summary, raw_cv_text, sectors, target_titles, target_countries, search_area, sources_enabled, preferred_contracts, extraction_confidence)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO profile (full_name, email, phone, location, linkedin_url, portfolio_url, summary, raw_cv_text, sectors, target_titles, target_countries, search_area, sources_enabled, preferred_contracts, remote, extraction_confidence)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         input.full_name ?? null,
@@ -89,6 +90,7 @@ export function saveProfile(input: Omit<ProfileFull, "id" | "created_at" | "upda
         input.search_area ?? "",
         asJson(input.sources_enabled ?? []),
         asJson(input.preferred_contracts ?? ["cdi", "cdd"]),
+        input.remote === "full" ? "full" : "",
         input.extraction_confidence ?? 0
       );
     const profileId = Number(result.lastInsertRowid);

@@ -99,9 +99,32 @@ export function locateFr(location: string | null | undefined): Located | null {
   return null;
 }
 
+/**
+ * Zone de recherche (« D:93 », « R:11 ») tirée d'un texte libre : « Seine-
+ * Saint-Denis ou Paris » → la région qui les contient, « Bordeaux » → la
+ * Gironde, « Strasbourg (67) » → le Bas-Rhin. null quand rien n'est situé.
+ */
+export function searchAreaFromText(text: string | null | undefined): string | null {
+  if (!text?.trim()) return null;
+  const located = text
+    .split(/\s+(?:ou|et|or|and)\s+|[,;/|]|\s[-–—]\s/i)
+    .map((part) => locateFr(part.trim()))
+    .filter((l): l is Located => !!l && (!!l.dept || !!l.region));
+  if (!located.length) return null;
+  const depts = [...new Set(located.map((l) => l.dept).filter((d): d is string => !!d))];
+  const regions = [...new Set(located.map((l) => l.region ?? (l.dept ? regionOfDept.get(l.dept) : null)).filter((r): r is string => !!r))];
+  if (depts.length === 1 && located.every((l) => l.dept === depts[0])) return `D:${depts[0]}`;
+  return regions.length === 1 ? `R:${regions[0]}` : depts.length ? `D:${depts[0]}` : null;
+}
+
 /** Télétravail complet : le lieu de l'offre ne contraint plus personne. */
 const FULL_REMOTE =
   /(?:100\s?%|full|fully|totalement|entierement|complet)\s*(?:en\s+)?(?:remote|teletravail|a distance)|(?:remote|teletravail)\s*(?:100\s?%|complet|total)|\bfull[- ]remote\b|\bremote[- ]first\b/;
+
+/** L'annonce propose-t-elle un télétravail complet ? */
+export function isFullRemote(offer: { location?: string | null; title: string; description_text: string }): boolean {
+  return FULL_REMOTE.test(key(`${offer.title} ${offer.location ?? ""} ${offer.description_text.slice(0, 3000)}`));
+}
 
 export type ZoneFit = {
   /** « dans » la zone, « proche » (même région), « hors » zone, ou null (lieu inconnu, zone non définie, étranger). */

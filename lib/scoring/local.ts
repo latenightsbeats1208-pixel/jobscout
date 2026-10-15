@@ -21,7 +21,7 @@ import { assessLanguage, profileLanguages, type Mastery } from "./language";
 import { aiFactor, effectiveVerdict, isReviewUsable, reviewReason, type AiReview } from "./review";
 import { withoutGenderForms } from "@/lib/scan/query-rewrite";
 import { parseSearchArea, type SearchArea } from "@/lib/geo/fr";
-import { zoneFit } from "@/lib/geo/locate";
+import { isFullRemote, zoneFit } from "@/lib/geo/locate";
 import { decodeHtmlEntities } from "@/lib/text/entities";
 
 export type { Corpus } from "./text";
@@ -435,6 +435,8 @@ function scoreContract(
     (category === "stage" && /\b(stage|stagiaire|internship|intern)\b/.test(declared)) ||
     (category === "alternance" && /\b(alternance|alternant|apprentissage|apprenti|contrat pro)\b/.test(declared));
   const excluded = training && !prefs.includes(category) ? `${category === "stage" ? "stage" : "alternance"}, hors des contrats recherchés` : null;
+  // Une mission freelance pour qui en cherche une : le contrat recherché.
+  if (freelance && prefs.includes("freelance")) return { score: 100, category, excluded, freelance };
   if (category === "autre") return { score: 50, category, excluded, freelance };
   if (prefs.includes(category)) return { score: 100, category, excluded, freelance };
   return { score: 20, category, excluded, freelance };
@@ -483,6 +485,9 @@ function scorePrepared(
   const contract = scoreContract(profile.preferred_contracts, offre);
   const duration = scoreDuration(contract.category, offre.description_text);
   const zone = zoneFit(p.area, offre);
+  const wantsFreelance = (profile.preferred_contracts ?? []).includes("freelance");
+  // Télétravail complet recherché, et proposé : l'offre vaut une offre de la zone, un peu mieux.
+  const remote = profile.remote === "full" && isFullRemote(offre);
 
   // 1. Filtres. Une offre qui en échoue un est « hors critères » : visible en
   //    fin de liste, note plafonnée.
@@ -515,11 +520,12 @@ function scorePrepared(
   // 0,85 son score ne cédait que 5 points.
   const zoneFactor = zone.fit === "hors" ? 0.55 : zone.fit === "proche" ? 0.75 : 1;
   // Freelance pour qui cherche un salariat : visible, mais en retrait.
-  const freelanceFactor = contract.freelance ? 0.75 : 1;
+  const freelanceFactor = contract.freelance && !wantsFreelance ? 0.75 : 1;
+  const remoteBonus = remote ? 5 : 0;
   let finalScore = Math.round(
     Math.max(
       0,
-      Math.min(100, relevance * seniority.factor * hierarchy.factor * language.factor * zoneFactor * freelanceFactor + durationBonus + contractDelta)
+      Math.min(100, relevance * seniority.factor * hierarchy.factor * language.factor * zoneFactor * freelanceFactor + durationBonus + contractDelta + remoteBonus)
     )
   );
   if (exclusions.length) finalScore = Math.min(finalScore, EXCLUDED_CAP);
@@ -547,19 +553,20 @@ function scorePrepared(
   if (otherStack) parts.push(`autre langage (${otherStack})`);
   if (zone.fit === "hors") parts.push(`hors de votre zone (${zone.place})`);
   else if (zone.fit === "proche") parts.push(`près de votre zone (${zone.place})`);
-  if (contract.freelance) parts.push("freelance");
+  if (remote) parts.push("télétravail complet");
+  if (contract.freelance) parts.push(wantsFreelance ? "freelance recherché" : "freelance");
   if (!seniority.excluded && seniority.note) parts.push(seniority.note);
   if (hierarchy.note) parts.push(hierarchy.note);
   if (!language.excluded && language.note) parts.push(language.note);
   if (duration.months && duration.score >= 60) parts.push(`durée ${duration.months} mois`);
-  if (contract.score === 100) parts.push(`${contract.category.toUpperCase()} recherché`);
+  if (contract.score === 100 && !contract.freelance) parts.push(`${contract.category.toUpperCase()} recherché`);
   else if (contract.score === 20) parts.push(`${contract.category} (non ciblé)`);
   const reason = parts.length ? parts.join(" · ") : "Faible recouvrement avec votre profil";
 
   // La carte de la liste ne montrait que la note : il fallait ouvrir chaque
   // offre pour savoir pourquoi elle remontait (audit d'octobre 2026). Elle dit
   // désormais la raison principale et le premier défaut.
-  const plus =
+  const reasonPlus =
     verdict === "postuler"
       ? aiReason
       : title.best && title.score >= 50
@@ -569,12 +576,13 @@ function scorePrepared(
       : skills.matched.length
       ? `compétences : ${skills.matched.slice(0, 3).join(", ")}`
       : null;
+  const plus = [reasonPlus, remote ? "en télétravail complet" : null].filter(Boolean).join(", ") || null;
   const defects = [
     exclusions.length ? `hors critères : ${exclusions[0]}` : null,
     verdict && verdict !== "postuler" ? aiReason : null,
     otherStack ? `autre langage (${otherStack})` : null,
     zone.fit === "hors" ? `hors de votre zone (${zone.place})` : zone.fit === "proche" ? `près de votre zone (${zone.place})` : null,
-    contract.freelance ? "freelance" : null,
+    contract.freelance && !wantsFreelance ? "freelance" : null,
     hierarchy.note,
     !seniority.excluded && seniority.factor < 1 ? seniority.note : null,
     !language.excluded && language.factor < 1 ? language.note : null,

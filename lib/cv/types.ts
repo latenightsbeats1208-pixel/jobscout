@@ -74,8 +74,14 @@ export const ProfileSchema = z.object({
   search_area: z.string().default(""),
   sources_enabled: z.array(z.string()).default([]),
   preferred_contracts: z
-    .array(z.enum(["cdi", "cdd", "interim", "vie", "stage", "alternance"]))
+    .array(z.enum(["cdi", "cdd", "interim", "vie", "stage", "alternance", "freelance"]))
     .default(["cdi", "cdd"]),
+  /**
+   * Télétravail : « full » = complet recherché, « » = indifférent. Un développeur
+   * qui cherchait « une mission freelance ou un CDI full remote » était rangé
+   * d'office en CDI ou CDD, sans rien pour dire le télétravail (audit d'octobre 2026).
+   */
+  remote: z.enum(["", "full"]).optional(),
   extraction_confidence: z.number().min(0).max(100).default(0),
   created_at: z.string().optional(),
   updated_at: z.string().optional(),
@@ -139,5 +145,15 @@ export const ExtractedCVSchema = z.object({
   certifications: z
     .array(z.object({ name: z.string(), issuer: z.string().nullable(), date: z.string().nullable() }))
     .default([]),
+  /** Ce que le CV dit de la recherche (« en Alsace ou côté allemand, CDI ») : de quoi pré-remplir l'inscription. */
+  search_preferences: z
+    .object({
+      zone: z.string().nullable().default(null),
+      countries: z.array(z.string()).default([]),
+      contracts: z.array(z.string()).default([]),
+      remote: z.boolean().nullable().default(null),
+    })
+    .nullable()
+    .optional(),
 });
 export type ExtractedCV = z.infer<typeof ExtractedCVSchema>;

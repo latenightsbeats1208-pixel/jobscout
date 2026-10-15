@@ -127,8 +127,21 @@ const EXTRACT_TOOL = {
           required: ["name", "issuer", "date"],
         },
       },
+      search_preferences: {
+        type: "object",
+        properties: {
+          zone: { type: ["string", "null"] },
+          countries: { type: "array", items: { type: "string" } },
+          contracts: {
+            type: "array",
+            items: { type: "string", enum: ["cdi", "cdd", "interim", "freelance", "stage", "alternance", "vie"] },
+          },
+          remote: { type: ["boolean", "null"] },
+        },
+        required: ["zone", "countries", "contracts", "remote"],
+      },
     },
-    required: ["identity", "summary", "target_titles", "experiences", "educations", "skills", "languages", "certifications"],
+    required: ["identity", "summary", "target_titles", "experiences", "educations", "skills", "languages", "certifications", "search_preferences"],
   },
 } as const;
 
