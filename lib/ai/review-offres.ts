@@ -78,6 +78,8 @@ function profilePayload(p: ProfileFull, now: Date): string {
       contexte: e.description ? e.description.slice(0, 300) : undefined,
     })),
     formations: formations.length ? formations : "non renseignée",
+    // Cartes, habilitations, titres : ce sont souvent les conditions d'accès au poste.
+    certifications: (p.certifications ?? []).map((c) => (c.date ? `${c.name} (${c.date})` : c.name)),
     competences: p.skills.map((s) => s.name),
     langues: p.languages.map((l) => (l.level ? `${l.name} (${l.level})` : l.name)),
   });

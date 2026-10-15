@@ -69,6 +69,8 @@ export function profileHash(p: ProfileFull): string {
     edu: p.educations.map((e) => [e.degree, e.field]),
     skills: p.skills.map((s) => s.name),
     langs: p.languages.map((l) => [l.name, l.level]),
+    // Seulement s'il y en a : sans cela, toutes les relectures en cache seraient à refaire.
+    ...(p.certifications?.length ? { certs: p.certifications.map((c) => [c.name, c.date ?? null]) } : {}),
   });
 }
 

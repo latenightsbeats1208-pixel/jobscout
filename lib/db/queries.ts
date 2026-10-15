@@ -1,6 +1,6 @@
 import "server-only";
 import { getDb, parseJson, asJson, transaction } from "./index";
-import type { ProfileFull, Profile, Experience, Education, Skill, Language } from "@/lib/cv/types";
+import type { ProfileFull, Profile, Experience, Education, Skill, Language, Certification } from "@/lib/cv/types";
 
 export function getProfile(): ProfileFull | null {
   const db = getDb();
@@ -38,6 +38,9 @@ export function getProfile(): ProfileFull | null {
   const languages = (
     db.prepare("SELECT * FROM languages WHERE profile_id = ?").all(id) as Language[]
   ).map((l) => ({ ...l }));
+  const certifications = (
+    db.prepare("SELECT id, name, issuer, date FROM certifications WHERE profile_id = ? ORDER BY id").all(id) as Certification[]
+  ).map((c) => ({ ...c }));
 
   return {
     ...profile,
@@ -58,6 +61,7 @@ export function getProfile(): ProfileFull | null {
       evidence_experience_ids: parseJson(s.evidence_experience_ids, []),
     })),
     languages,
+    certifications,
   };
 }
 
@@ -142,6 +146,9 @@ export function saveProfile(input: Omit<ProfileFull, "id" | "created_at" | "upda
 
     const insLang = db.prepare(`INSERT INTO languages (profile_id, name, level) VALUES (?, ?, ?)`);
     input.languages.forEach((l) => insLang.run(profileId, l.name, l.level ?? null));
+
+    const insCert = db.prepare(`INSERT INTO certifications (profile_id, name, issuer, date) VALUES (?, ?, ?, ?)`);
+    (input.certifications ?? []).forEach((c) => insCert.run(profileId, c.name, c.issuer ?? null, c.date ?? null));
 
     return profileId;
   });

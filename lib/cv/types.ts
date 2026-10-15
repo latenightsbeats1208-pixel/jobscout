@@ -41,6 +41,21 @@ export const LanguageSchema = z.object({
 });
 export type Language = z.infer<typeof LanguageSchema>;
 
+/**
+ * Certification, habilitation, carte ou titre professionnel : SSIAP, carte
+ * CNAPS, CACES, permis C, SST, formation Bobath, APICS CSCP… Ce sont souvent
+ * des conditions d'accès au poste. Avant, l'extraction les relevait, mais le
+ * profil n'avait pas de place pour elles : elles finissaient dans les
+ * compétences ou nulle part (audit d'octobre 2026).
+ */
+export const CertificationSchema = z.object({
+  id: z.number().optional(),
+  name: z.string().min(1),
+  issuer: z.string().nullable().optional(),
+  date: z.string().nullable().optional(),
+});
+export type Certification = z.infer<typeof CertificationSchema>;
+
 export const ProfileSchema = z.object({
   id: z.number().optional(),
   full_name: z.string().nullable().optional(),
@@ -72,6 +87,8 @@ export const ProfileFullSchema = ProfileSchema.extend({
   educations: z.array(EducationSchema).default([]),
   skills: z.array(SkillSchema).default([]),
   languages: z.array(LanguageSchema).default([]),
+  /** Facultatif : un profil enregistré avant cette liste, ou un ancien instantané, n'en a pas. */
+  certifications: z.array(CertificationSchema).optional(),
 });
 export type ProfileFull = z.infer<typeof ProfileFullSchema>;
 

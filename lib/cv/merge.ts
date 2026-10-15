@@ -1,5 +1,5 @@
 import "server-only";
-import type { ProfileFull, Experience, Education, Skill, Language } from "./types";
+import type { ProfileFull, Experience, Education, Skill, Language, Certification } from "./types";
 import {
   normalizeStr,
   strSim,
@@ -133,6 +133,8 @@ export type MergePlan = {
   enrichedEducations: EnrichedEdu[];
   newSkills: Skill[];
   newLanguages: Language[];
+  /** Absent d'un plan construit avant la liste des certifications. */
+  newCertifications?: Certification[];
   duplicates: {
     skills: number;
     languages: number;
@@ -150,6 +152,7 @@ export function planMerge(current: ProfileFull, incoming: ProfileFull): MergePla
     enrichedEducations: [],
     newSkills: [],
     newLanguages: [],
+    newCertifications: [],
     duplicates: { skills: 0, languages: 0 },
   };
 
@@ -224,6 +227,15 @@ export function planMerge(current: ProfileFull, incoming: ProfileFull): MergePla
     }
   }
 
+  // Certifications : dédoublonnées par nom.
+  const certSeen = new Set((current.certifications ?? []).map((c) => normalizeStr(c.name)));
+  for (const c of incoming.certifications ?? []) {
+    const key = normalizeStr(c.name);
+    if (!key || certSeen.has(key)) continue;
+    plan.newCertifications!.push(c);
+    certSeen.add(key);
+  }
+
   return plan;
 }
 
@@ -255,6 +267,7 @@ export function applyMerge(current: ProfileFull, plan: MergePlan): ProfileFull {
     educations,
     skills,
     languages,
+    certifications: [...(current.certifications ?? []), ...(plan.newCertifications ?? [])],
   };
 }
 

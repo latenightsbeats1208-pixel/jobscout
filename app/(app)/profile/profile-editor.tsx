@@ -10,6 +10,7 @@ import {
   GraduationCap,
   Wrench,
   Languages,
+  Award,
   Globe,
   User,
   ChevronDown,
@@ -27,10 +28,10 @@ import { cn } from "@/lib/utils";
 import { COUNTRY_GROUPS } from "@/lib/countries";
 import { SOURCES_META } from "@/lib/sources-meta";
 import { EngineNotice } from "@/components/app/engine-notice";
-import type { ProfileFull, Experience, Education, Skill, Language } from "@/lib/cv/types";
+import type { ProfileFull, Experience, Education, Skill, Language, Certification } from "@/lib/cv/types";
 
 const SOURCES = SOURCES_META;
-const PROFILE_SECTIONS = [["#identite", "Identité"], ["#recherche", "Recherche"], ["#experiences", "Expériences"], ["#formations", "Formations"], ["#competences", "Compétences"], ["#langues", "Langues"], ["#parametres", "Paramètres"]] as const;
+const PROFILE_SECTIONS = [["#identite", "Identité"], ["#recherche", "Recherche"], ["#experiences", "Expériences"], ["#formations", "Formations"], ["#competences", "Compétences"], ["#langues", "Langues"], ["#certifications", "Certifications"], ["#parametres", "Paramètres"]] as const;
 const NO_SOURCE_MESSAGE = "Aucune source cochée : cochez au moins une source dans Recherche › Sources, puis enregistrez.";
 
 /**
@@ -111,7 +112,8 @@ export function ProfileEditor({ initial }: { initial: ProfileFull }) {
       const res = await fetch("/api/profile", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(profile),
+        // Une ligne de certification laissée vide n'est pas une erreur : elle n'est pas enregistrée.
+        body: JSON.stringify({ ...profile, certifications: (profile.certifications ?? []).filter((c) => c.name.trim()) }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -184,6 +186,7 @@ export function ProfileEditor({ initial }: { initial: ProfileFull }) {
         <EducationsCard profile={profile} update={update} />
         <SkillsCard profile={profile} update={update} />
         <LanguagesCard profile={profile} update={update} />
+        <CertificationsCard profile={profile} update={update} />
       </div>
       </div>
     </div>
@@ -1014,6 +1017,79 @@ function LanguagesCard({
               onChange={(e) => patch(i, { level: e.target.value || null })}
             />
             <Button variant="ghost" size="icon" onClick={() => remove(i)} title="Supprimer">
+              <Trash2 className="h-4 w-4 text-textSecondary" />
+            </Button>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ============================================================
+// Certifications
+// ============================================================
+
+/**
+ * Cartes, habilitations, titres : souvent des conditions d'accès au poste
+ * (carte CNAPS, SSIAP, CACES, permis C). La relecture par l'IA les compare aux
+ * exigences de chaque annonce.
+ */
+function CertificationsCard({
+  profile,
+  update,
+}: {
+  profile: ProfileFull;
+  update: (p: Partial<ProfileFull>) => void;
+}) {
+  const certifications = profile.certifications ?? [];
+  function patch(i: number, p: Partial<Certification>) {
+    const next = [...certifications];
+    next[i] = { ...next[i], ...p };
+    update({ certifications: next });
+  }
+  function add() {
+    update({ certifications: [...certifications, { name: "", issuer: null, date: null }] });
+  }
+  function remove(i: number) {
+    update({ certifications: certifications.filter((_, j) => j !== i) });
+  }
+
+  return (
+    <Card id="certifications" className="scroll-mt-28 md:col-span-2">
+      <SectionHead
+        icon={<Award className="h-4 w-4" />}
+        title={`Certifications et habilitations (${certifications.length})`}
+        action={
+          <Button size="sm" onClick={add}>
+            <Plus className="h-4 w-4" /> Ajouter
+          </Button>
+        }
+      />
+      <p className="-mt-1 mb-3 text-small text-textSecondary">
+        Carte professionnelle, SSIAP, CACES, permis, habilitation électrique, certification professionnelle : ce que
+        les annonces exigent souvent pour exercer.
+      </p>
+      <div className="space-y-2">
+        {certifications.length === 0 && (
+          <p className="text-small text-textSecondary py-2 text-center">Aucune certification.</p>
+        )}
+        {certifications.map((c, i) => (
+          <div key={i} className="flex gap-2">
+            <Input
+              value={c.name}
+              aria-label={`Certification ${i + 1}`}
+              placeholder="Certification (SSIAP 1, CACES R489 cat. 3…)"
+              onChange={(e) => patch(i, { name: e.target.value })}
+            />
+            <Input
+              value={c.date ?? ""}
+              aria-label={`Date ou validité de la certification ${i + 1}`}
+              placeholder="Année ou validité"
+              className="max-w-[12rem]"
+              onChange={(e) => patch(i, { date: e.target.value || null })}
+            />
+            <Button variant="ghost" size="icon" onClick={() => remove(i)} title="Supprimer" aria-label={`Supprimer la certification ${i + 1}`}>
               <Trash2 className="h-4 w-4 text-textSecondary" />
             </Button>
           </div>

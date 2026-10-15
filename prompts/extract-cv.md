@@ -38,6 +38,13 @@ Tu es un expert en extraction de données structurées à partir de CV (curricul
 
 8. **Langues** : niveau au format CECRL si possible (A1-C2), sinon texte libre ("courant", "natif", "B2").
 
-9. **Postes visés (`target_titles`)** : 1 à 3 intitulés, formulés comme des titres d'offres d'emploi (« Développeur .NET », « Business Analyst »). Prends d'abord l'intitulé que le CV affiche en tête, sous le nom, puis celui du poste actuel ou le plus récent. Jamais un poste que le CV ne mentionne pas, jamais un stage ni une alternance passés. Tableau vide si le CV n'en affiche aucun.
+9. **Postes visés (`target_titles`)** : 1 à 3 intitulés, formulés comme des titres d'offres d'emploi (« Développeur .NET », « Business Analyst »). Prends d'abord l'intitulé que le CV affiche en tête, sous le nom, puis celui du poste actuel ou le plus récent. Jamais un poste que le CV ne mentionne pas, jamais un stage ni une alternance passés. Jamais un poste qui exige un titre que le CV dit ne pas encore avoir (« chef d'équipe SSIAP 2, formation SSIAP 2 souhaitée » : le SSIAP 2 n'est pas acquis, ce poste n'est pas visé). Tableau vide si le CV n'en affiche aucun.
 
-10. **Sortie** : appelle UNIQUEMENT le tool `extract_cv` avec les données structurées. Ne réponds pas en texte libre.
+10. **Certifications (`certifications`)** : tout ce qui atteste une qualification ou une autorisation d'exercer, même si le CV le range dans ses formations ou ses compétences, et même mal orthographié :
+   - cartes et titres professionnels : carte professionnelle CNAPS, CQP APS, SSIAP 1, 2 ou 3, SST, titre professionnel ;
+   - habilitations et autorisations : habilitation électrique (H0B0, BR…), AIPR, CACES avec sa catégorie, permis de conduire avec sa catégorie (B, C, CE, D) ;
+   - certifications professionnelles : APICS CSCP, Lean Six Sigma, PMP, ITIL, TOEIC avec son score ;
+   - formations certifiantes nommées dans un métier réglementé : Bobath, kinésithérapie respiratoire pédiatrique.
+   `name` = le titre tel qu'on le cite (« SSIAP 1 », « Carte professionnelle CNAPS »), `issuer` = l'organisme s'il est écrit, `date` = l'année d'obtention ou la validité écrite (« 2014, recyclage 2023 », « valide jusqu'en 2028 »), sinon `null`. Un titre seulement « souhaité » ou « en cours » n'est PAS une certification. Un diplôme de l'enseignement (Master, BTS, diplôme d'ingénieur) reste dans `educations` ; un diplôme d'État d'exercice (infirmier, masseur-kinésithérapeute) va dans les deux.
+
+11. **Sortie** : appelle UNIQUEMENT le tool `extract_cv` avec les données structurées. Ne réponds pas en texte libre.

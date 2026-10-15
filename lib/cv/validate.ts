@@ -91,6 +91,20 @@ export function buildProfileFromExtraction(
     return true;
   });
 
+  // Certifications : dédoublonnées par nom, celles qui ont une date d'abord gardées.
+  const certMap = new Map<string, { name: string; issuer: string | null; date: string | null }>();
+  for (const c of ex.certifications ?? []) {
+    const name = c.name.trim();
+    const key = name.toLowerCase();
+    if (!key) continue;
+    const kept = certMap.get(key);
+    if (!kept) certMap.set(key, { name, issuer: c.issuer?.trim() || null, date: c.date?.trim() || null });
+    else {
+      kept.issuer ??= c.issuer?.trim() || null;
+      kept.date ??= c.date?.trim() || null;
+    }
+  }
+
   return {
     full_name: ex.identity.full_name,
     email: ex.identity.email,
@@ -113,6 +127,7 @@ export function buildProfileFromExtraction(
     educations,
     skills,
     languages: Array.from(langMap.values()),
+    certifications: Array.from(certMap.values()),
   };
 }
 

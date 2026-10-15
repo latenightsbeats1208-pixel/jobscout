@@ -187,6 +187,7 @@ function prepareProfile(profile: ProfileFull, corpus: Corpus): PreparedProfile {
     ...declared,
     ...profile.experiences.flatMap((e) => [e.title, e.description ?? "", ...e.bullet_points, ...e.skills_used]),
     ...profile.educations.flatMap((e) => [e.degree ?? "", e.field ?? "", e.description ?? ""]),
+    ...(profile.certifications ?? []).map((c) => c.name),
     profile.summary ?? "",
   ].join("\n");
 

@@ -277,5 +277,6 @@ function stripIds(p: ProfileFull) {
       anchored: s.evidence_experience_ids.length > 0,
     })),
     languages: p.languages,
+    certifications: (p.certifications ?? []).map((c) => ({ name: c.name, date: c.date ?? null })),
   };
 }
