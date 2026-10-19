@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { companyKey, groupDuplicates, sameOffer, titleKey, type DedupeCandidate } from "@/lib/scan/dedupe";
+import { companyKey, groupDuplicates, sameOffer, shingles as shinglesOf, titleKey, type DedupeCandidate } from "@/lib/scan/dedupe";
 import { getDb } from "@/lib/db";
 import { searchOffres, setOffreScore, upsertOffreFromSource, offresCounts, type ScrapedOffre } from "@/lib/db/offres";
 import { getOffreSiblings, refreshDuplicates } from "@/lib/db/duplicates";
@@ -32,6 +32,34 @@ describe("même offre ?", () => {
       { id: 1, title: "Comptable", company: "Air Liquide", country: "France", location: "Lyon" },
       { id: 2, title: "Comptable", company: "Air France", country: "France", location: "Lyon" },
     )).toBe(false);
+  });
+
+  it("deux noms qui ne diffèrent que par leurs espaces (cas réel France Travail / HelloWork)", () => {
+    expect(sameOffer(
+      { id: 2865, title: "Acheteur Junior H/F", company: "Dordigital", country: "France", location: "Pré-Saint-Gervais" },
+      { id: 2824, title: "Acheteur Junior H/F", company: "Dor Digital", country: "France", location: "Le Pré-Saint-Gervais" },
+    )).toBe(true);
+  });
+
+  it("deux noms sans rapport, mais même intitulé et même texte : une seule offre (cas réel : Burger King / Bertrand Franchise)", () => {
+    const missions = Array.from({ length: 12 }, (_, i) => `Mission ${i} : négocier avec les fournisseurs de la catégorie ${i} et suivre leurs performances.`).join(" ");
+    const c = (id: number, company: string): DedupeCandidate => ({
+      id, title: "CDI - Acheteur H/F", company, country: "France", location: "Clichy",
+      activity: false, closed: false, description_status: "ok", score: 80 - id, posted_at: "2026-10-12",
+    });
+    const texts = new Map([
+      [3017, `Chez BURGER KING, on ne fait rien comme les autres. ${missions}`],
+      [3019, `N°2 du Burger, on espère n°1 de ton cœur. Chez BURGER KING, on ne fait rien comme les autres. ${missions}`],
+      [3020, `Rejoignez notre centrale d'achats. ${missions.replace(/négocier/g, "piloter").replace(/fournisseurs/g, "prestataires")}`],
+    ]);
+    const textOf = (id: number) => shinglesOf(texts.get(id) ?? "");
+    const groups = groupDuplicates([c(3017, "BURGER KING® France"), c(3019, "Bertrand Franchise"), c(3020, "Autre Enseigne")], textOf);
+    expect(groups.get(3019)).toBe(3017);
+    // Même intitulé, texte différent : deux offres.
+    expect(groups.has(3020)).toBe(false);
+    // Un texte trop court ne suffit pas à juger.
+    const short = new Map([[1, "Acheteur H/F à Clichy."], [2, "Acheteur H/F à Clichy."]]);
+    expect(groupDuplicates([c(1, "Alpha"), c(2, "Beta")], (id) => shinglesOf(short.get(id) ?? "")).size).toBe(0);
   });
 
   it("un autre niveau, un autre contrat ou un autre pays reste une autre offre", () => {

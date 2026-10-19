@@ -15,6 +15,11 @@ import { normalize, tokenize } from "@/lib/scoring/text";
  * poste pour plusieurs clients avec des textes différents, et c'est bien une
  * seule opportunité « dans 5 lieux » pour qui cherche. Sans entreprise connue,
  * rien n'est regroupé : deux « Agent de service » anonymes n'ont rien en commun.
+ *
+ * Elle sert en revanche quand le NOM diffère tout à fait : même intitulé, même
+ * texte, mais « BURGER KING® France » ici et « Bertrand Franchise » (sa maison
+ * mère) là, « Groupement Mousquetaires » et « Intermarché », « ADECCO » et « LHH »
+ * (recherche Acheteur du 19 octobre 2026 : trois paires dans les 12 premières).
  */
 
 export type DedupeInput = {
@@ -46,11 +51,16 @@ export function companyKey(company: string | null): string | null {
   return PLACEHOLDER_COMPANY.test(key) ? null : key;
 }
 
-/** Même employeur : les mots distinctifs du nom le plus court sont tous dans l'autre. */
+/**
+ * Même employeur : les mots distinctifs du nom le plus court sont tous dans
+ * l'autre, ou les deux noms ne diffèrent que par leurs espaces (« Dor Digital »
+ * et « Dordigital »).
+ */
 export function sameCompany(a: string | null, b: string | null): boolean {
   const ka = companyKey(a);
   const kb = companyKey(b);
   if (!ka || !kb) return false;
+  if (ka.replace(/ /g, "") === kb.replace(/ /g, "")) return true;
   const [short, long] = [new Set(ka.split(" ")), new Set(kb.split(" "))].sort((x, y) => x.size - y.size);
   return [...short].every((t) => long.has(t));
 }
@@ -90,6 +100,33 @@ export type DedupeCandidate = DedupeInput & {
 
 const STATUS_RANK = { ok: 0, partial: 1, failed: 2 } as const;
 
+/** Suites de cinq mots d'un texte : deux publications d'une même annonce en partagent presque toutes. */
+export function shingles(text: string): Set<string> {
+  const words = normalize(text).split(/[^a-z0-9]+/).filter(Boolean);
+  const out = new Set<string>();
+  for (let i = 0; i + 5 <= words.length; i++) out.add(words.slice(i, i + 5).join(" "));
+  return out;
+}
+
+/**
+ * Seuils mesurés sur 1 635 offres (19 octobre 2026) : entre offres de même
+ * intitulé et d'employeurs aux noms différents, le texte commun se répartit
+ * presque tout sous 30 % ou au-dessus de 85 %, et chaque paire relue au-dessus
+ * de 85 % était une même annonce. Un texte de moins de 40 suites (une
+ * quarantaine de mots) est trop court pour en juger.
+ */
+const SAME_TEXT = 0.85;
+const MIN_SHINGLES = 40;
+
+/** Même texte d'annonce, à quelques lignes près : le plus court se retrouve presque entier dans l'autre. */
+export function sameText(a: Set<string>, b: Set<string>): boolean {
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  if (small.size < MIN_SHINGLES) return false;
+  let shared = 0;
+  for (const s of small) if (large.has(s)) shared++;
+  return shared / small.size >= SAME_TEXT;
+}
+
 /**
  * Celle qui représente le groupe dans la liste : celle sur laquelle l'utilisateur
  * a déjà agi (son avis, son dossier restent visibles), puis une offre en ligne,
@@ -106,8 +143,13 @@ function compareRepresentative(a: DedupeCandidate, b: DedupeCandidate): number {
   );
 }
 
-/** Pour chaque offre doublon, l'id de l'offre qui représente son groupe. */
-export function groupDuplicates(rows: DedupeCandidate[]): Map<number, number> {
+/**
+ * Pour chaque offre doublon, l'id de l'offre qui représente son groupe.
+ * `textOf` : les suites de mots de la description d'une offre (voir shingles),
+ * demandées seulement pour comparer deux offres de même intitulé dont les
+ * employeurs ne se reconnaissent pas.
+ */
+export function groupDuplicates(rows: DedupeCandidate[], textOf?: (id: number) => Set<string>): Map<number, number> {
   const byPost = new Map<string, DedupeCandidate[]>();
   for (const r of rows) {
     const key = companyKey(r.company) ? postKey(r) : null;
@@ -120,7 +162,10 @@ export function groupDuplicates(rows: DedupeCandidate[]): Map<number, number> {
     const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
     for (let i = 0; i < posts.length; i++) {
       for (let j = i + 1; j < posts.length; j++) {
-        if (sameCompany(posts[i].company, posts[j].company)) parent[find(j)] = find(i);
+        if (find(i) === find(j)) continue;
+        if (sameCompany(posts[i].company, posts[j].company) || (textOf && sameText(textOf(posts[i].id), textOf(posts[j].id)))) {
+          parent[find(j)] = find(i);
+        }
       }
     }
     const groups = new Map<number, DedupeCandidate[]>();
