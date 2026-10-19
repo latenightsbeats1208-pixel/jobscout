@@ -47,6 +47,17 @@ function experienceWeight(e: { title: string; description?: string | null }): nu
   return 1;
 }
 
+// « 6 mois », « 18 months », « 1 an », « 2 years ».
+const WRITTEN_DURATION = /\b(\d{1,2})\s*(mois|months?|ans?|annees?|years?)\b/;
+
+/** Durée écrite en toutes lettres dans la description d'une expérience, en mois. */
+function writtenMonths(description: string | null | undefined): number | null {
+  const m = normalize(description ?? "").match(WRITTEN_DURATION);
+  if (!m) return null;
+  const months = /^(mois|month)/.test(m[2]) ? Number(m[1]) : Number(m[1]) * 12;
+  return months >= 1 && months <= 60 ? months : null;
+}
+
 /**
  * Années d'expérience du profil. Les périodes qui se chevauchent ne comptent
  * qu'une fois ; un stage, une alternance ou un emploi à temps partiel compte
@@ -60,7 +71,13 @@ export function profileExperienceYears(profile: ProfileFull, now = new Date()): 
     const start = toMonths(e.start_date, now);
     if (start === null) continue;
     // Fin absente : on ne suppose pas un poste toujours en cours, on compte six mois.
-    const end = Math.min(toMonths(e.end_date, now) ?? start + 6, nowMonths);
+    let end = Math.min(toMonths(e.end_date, now) ?? start + 6, nowMonths);
+    // Dates qui tiennent en un mois (« 2025-01 → 2025-01 ») : le CV ne donnait
+    // que l'année, et la durée n'est écrite que dans la description (« 6 mois »).
+    // Sans elle, une acheteuse aux quatre missions de 4 à 6 mois comptait zéro
+    // an, et un « Acheteur Senior » qui en demande 8 à 10 passait sans défaut
+    // (recherche du 19 octobre 2026).
+    if (end <= start) end = Math.min(start + (writtenMonths(e.description) ?? 0), nowMonths);
     if (end <= start) continue;
     intervals.push({ start, end, weight: experienceWeight(e) });
   }

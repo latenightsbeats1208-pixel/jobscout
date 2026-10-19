@@ -63,6 +63,21 @@ describe("expérience du profil", () => {
     expect(profileExperienceYears(p, now)).toBe(2.3);
   });
 
+  it("lit la durée écrite quand les dates tiennent en un mois", () => {
+    // Profil Acheteur du 19 octobre 2026 : le CV ne donnait que l'année de chaque mission.
+    const p = profile([
+      { title: "Acheteur Junior", start_date: "2025-01", end_date: "2025-01", description: "6 mois", bullet_points: [], skills_used: [] },
+      { title: "Assistant chef de produit", start_date: "2024-01", end_date: "2024-01", description: "4 mois", bullet_points: [], skills_used: [] },
+      { title: "Assistant commercial", start_date: "2023-01", end_date: "2023-01", description: "6 mois - grande distribution", bullet_points: [], skills_used: [] },
+      { title: "Chargé de projet", start_date: "2022-01", end_date: "2022-01", description: "6 mois - jeune entreprise", bullet_points: [], skills_used: [] },
+    ]);
+    expect(profileExperienceYears(p, now)).toBe(1.8);
+    // Sans durée écrite, rien n'est compté.
+    expect(profileExperienceYears(profile([
+      { title: "Acheteur", start_date: "2025-01", end_date: "2025-01", description: "Achats indirects", bullet_points: [], skills_used: [] },
+    ]), now)).toBeNull();
+  });
+
   it("lit « present » et renvoie null sans aucune date", () => {
     expect(profileExperienceYears(profile([
       { title: "Analyste", start_date: "2024-10", end_date: "present", bullet_points: [], skills_used: [] },

@@ -16,6 +16,8 @@ Tu es un expert en extraction de données structurées à partir de CV (curricul
    - "2023" seul (pas de mois) → `"2023-01"` par défaut (début d'année)
    - "présent", "aujourd'hui", "actuel", "current", "now", "ongoing" → `"present"` pour `end_date`
    - Si vraiment introuvable → `null`
+   - **Les mois écrits priment** : "mars 2023 – sept. 2023" → `"2023-03"` / `"2023-09"`. Ne réduis jamais une date à son année.
+   - **Une durée écrite** ("6 mois", "18 months", "2 ans") se recopie telle quelle au début de `description`, même si les dates sont lues : quand le CV ne donne que l'année ("2025 · 6 mois"), c'est la seule trace de la durée du poste.
 
 3. **Expériences** : extrait chaque poste séparément. Pour chaque expérience, remplis `bullet_points` avec les points/réalisations listés (ne mets PAS les bullets dans `description` qui doit être un paragraphe court de contexte). Si le CV n'a pas de bullet points, laisse `bullet_points` vide et mets le contenu dans `description`.
 
