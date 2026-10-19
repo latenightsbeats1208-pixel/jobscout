@@ -462,7 +462,7 @@ function scoreContract(
   // « Profession libérale - Emploi non salarié », « Franchise - … » : libellés de France Travail.
   const freelance = /\b(freelance|independant|auto entrepreneur|portage salarial|emploi non salarie)\b/.test(declared.replace(/[^a-z]+/g, " "));
   const training =
-    (category === "stage" && /\b(stage|stagiaire|internship|intern)\b/.test(declared)) ||
+    (category === "stage" && /\b(stage|stagiaire|internship|intern|stg)\b/.test(declared)) ||
     (category === "alternance" && /\b(alternance|alternant|apprentissage|apprenti|contrat pro)\b/.test(declared));
   const excluded = training && !prefs.includes(category) ? `${category === "stage" ? "stage" : "alternance"}, hors des contrats recherchés` : null;
   // Une mission freelance pour qui en cherche une : le contrat recherché.

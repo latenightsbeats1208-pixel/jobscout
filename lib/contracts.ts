@@ -24,6 +24,12 @@ function strip(s: string | null | undefined): string {
 
 const ALTERNANCE = /\b(alternance|alternant|apprentissage|apprenti|contrat\s+pro|professionnalisation)\b/;
 const STAGE = /\b(stage|stagiaire|internship|intern)\b/;
+/**
+ * « STG - Assistant(e) Acheteur » (Printemps, 19 octobre 2026) : l'abréviation
+ * n'est lue que dans le contrat et le titre, jamais dans la description, où
+ * elle désigne aussi le bac STG.
+ */
+const STAGE_DECLARED = /\b(stage|stagiaire|internship|intern|stg)\b/;
 const CDI = /\bcdi\b|\bpermanent\b|\bcontrat\s+a\s+duree\s+indeterminee\b/;
 const CDD = /\bcdd\b|\bfixed[\s-]term\b|\btemporary\b|\btemporaire\b|\bsaisonnier\b|\bcontrat\s+a\s+duree\s+determinee\b/;
 // « Intérim », « Mission intérimaire », « Travail temporaire » : le contrat déclaré.
@@ -74,7 +80,7 @@ export function classifyContract(input: {
   //    (« vous encadrerez un stagiaire », « recrutement en CDD et CDI »).
   const declared = `${ct} ${title}`;
   if (ALTERNANCE.test(declared)) return "alternance";
-  if (STAGE.test(declared)) return "stage";
+  if (STAGE_DECLARED.test(declared)) return "stage";
   const stated = declaredCategory(ct) ?? declaredCategory(title);
   if (stated === "cdd" && ALTERNANCE_CONTRACT.test(description)) return "alternance";
   if (stated) return stated;

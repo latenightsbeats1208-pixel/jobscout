@@ -22,6 +22,11 @@ describe("catégorie de contrat", () => {
     expect(classify("CDD", "", "Préparateur de commandes en alternance (H/F)")).toBe("alternance");
   });
 
+  it("« STG » dans le titre est un stage ; le bac STG d'une description, non (cas réel : Printemps)", () => {
+    expect(classify(null, "Le Printemps est un leader du commerce.", "STG - Assistant(e) Acheteur/Chef de produit PAP Homme (H/F)")).toBe("stage");
+    expect(classify(null, "Titulaire d'un bac STG, vous rejoignez notre équipe en CDI.", "Assistant commercial (H/F)")).toBe("cdi");
+  });
+
   it("sans contrat déclaré : la formule d'agence ne tranche rien, une mission si", () => {
     expect(classify(null, AGENCE)).toBe("autre");
     expect(classify(null, `${AGENCE} Mission d'intérim de longue durée à Poupry.`)).toBe("interim");
