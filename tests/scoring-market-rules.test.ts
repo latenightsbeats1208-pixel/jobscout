@@ -145,3 +145,20 @@ describe("langage principal", () => {
     expect(scoreOffreLocal(dotnet, ad("Développeur Full Stack")).reason).not.toMatch(/autre langage/);
   });
 });
+
+describe("un mot de périmètre dans le titre", () => {
+  it("« Acheteur indirect » reste un acheteur ; une autre spécialité continue de compter", async () => {
+    const { scoreOffresLocal } = await import("@/lib/scoring/local");
+    const profile: ProfileFull = {
+      sectors: [], target_titles: ["Acheteur"], target_countries: ["France"], search_area: "", sources_enabled: [], preferred_contracts: ["cdi"],
+      extraction_confidence: 0, experiences: [], educations: [], skills: [], languages: [],
+    };
+    const offer = (title: string) => ({ title, company: "X", country: "France", description_text: "Vous gérez un portefeuille de fournisseurs." });
+    // Recherche du 19 octobre 2026 : « acheteur » est partout dans les titres, « indirect » rare.
+    const batch = [...Array.from({ length: 30 }, () => offer("Acheteur H/F")), offer("Acheteur indirect (H/F)"), offer("Acheteur joaillerie (H/F)")];
+    const [plain, indirect, joaillerie] = scoreOffresLocal(profile, batch).slice(29).map((r) => r.breakdown.title);
+    expect(plain).toBe(100);
+    expect(indirect).toBeGreaterThanOrEqual(80); // 64 avant
+    expect(joaillerie).toBeLessThan(indirect);
+  });
+});

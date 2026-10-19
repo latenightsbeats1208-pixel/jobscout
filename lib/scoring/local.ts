@@ -208,6 +208,20 @@ function prepareProfile(profile: ProfileFull, corpus: Corpus): PreparedProfile {
 // ----------------------------------------------------------------------------
 
 /**
+ * Mots qui disent le périmètre d'un poste, pas un autre métier : « Acheteur
+ * indirect » reste un acheteur. Rares parmi les titres, ils pesaient plus lourd
+ * que le métier lui-même dans la précision : l'« Acheteur indirect » d'Hermès,
+ * jugé parfait à l'aveugle, n'avait que 64 en intitulé contre 100 pour
+ * « Acheteur » (recherche du 19 octobre 2026). Quand le titre contient tout le
+ * poste visé, un tel mot ne pèse pas plus que le métier retrouvé. La règle reste
+ * étroite : plafonner TOUS les mots inconnus faisait perdre 3 points de P@10 aux
+ * bancs (« Développeur Java » n'est pas un développeur .NET).
+ */
+const SCOPE_WORDS = new Set(
+  tokenize("direct indirect projet programme industriel industrielle international export local regional national groupe global strategique operationnel transverse multisite categorie central")
+);
+
+/**
  * Proximité de deux intitulés : F2 pondéré par la rareté des mots parmi les
  * titres. Le rappel (les mots du poste visé retrouvés dans le titre de l'offre)
  * compte quatre fois plus que la précision. La précision, elle, se mesure contre
@@ -232,10 +246,14 @@ function titleSimilarity(target: string[], offer: string[], vocabulary: Set<stri
   }
   const recall = total ? found / total : 0;
 
+  // Poids du mot le plus rare du poste visé retrouvé dans le titre : plafond
+  // d'un mot de périmètre (voir SCOPE_WORDS), quand le poste est là en entier.
+  const scopeCap = recall >= 0.999 ? Math.max(...[...targetSet].map((t) => titleIdf(corpus, t))) : Infinity;
   let kept = 0;
   let offered = 0;
   for (const t of offerSet) {
-    const w = titleIdf(corpus, t);
+    let w = titleIdf(corpus, t);
+    if (SCOPE_WORDS.has(t) && !targetSet.has(t) && !vocabulary.has(t)) w = Math.min(w, scopeCap);
     offered += w;
     let c = targetSet.has(t) || vocabulary.has(t) ? 1 : 0;
     for (const [full, abbr] of Object.entries(ABBREVIATIONS)) {
