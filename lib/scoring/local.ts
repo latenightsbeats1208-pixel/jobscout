@@ -19,7 +19,7 @@ import { assessSeniority, profileExperienceYears } from "./seniority";
 import { assessHierarchy, profileRanks, type Rank } from "./hierarchy";
 import { assessLanguage, profileLanguages, type Mastery } from "./language";
 import { aiFactor, effectiveVerdict, isReviewUsable, reviewReason, type AiReview } from "./review";
-import { withoutGenderForms } from "@/lib/scan/query-rewrite";
+import { frenchTitle, withoutGenderForms } from "@/lib/scan/query-rewrite";
 import { parseSearchArea, type SearchArea } from "@/lib/geo/fr";
 import { isFullRemote, zoneFit } from "@/lib/geo/locate";
 import { decodeHtmlEntities } from "@/lib/text/entities";
@@ -96,6 +96,8 @@ const EXCLUDED_CAP = 15;
 
 type PreparedOffer = {
   titleTokens: string[];
+  /** Le titre traduit, quand il est en anglais (« Junior Buyer » → « Acheteur »). */
+  frenchTitleTokens: string[] | null;
   titleJoined: string;
   bodyTokens: Set<string>;
   bodyJoined: string;
@@ -124,9 +126,11 @@ function prepareOffer(o: ScoringInput): PreparedOffer {
   // La ville ou le pays repris dans le titre (« … - Rouen ») ne disent rien du métier.
   const place = new Set(tokenize(`${o.location ?? ""} ${o.country ?? ""}`));
   const titleTokens = tokenize(withoutGenderForms(o.title)).filter((t) => !TITLE_NOISE.has(t) && !place.has(t));
+  const french = frenchTitle(withoutGenderForms(o.title));
   const body = tokenize(`${o.title}\n${o.description_text}`);
   return {
     titleTokens,
+    frenchTitleTokens: french ? tokenize(french).filter((t) => !TITLE_NOISE.has(t)) : null,
     titleJoined: joinTokens(titleTokens),
     bodyTokens: new Set(body),
     bodyJoined: joinTokens(body),
@@ -293,7 +297,15 @@ function scoreTitle(p: PreparedProfile, o: PreparedOffer, corpus: Corpus): { sco
   let score = 0;
   let best: string | null = null;
   for (const t of p.targets) {
-    const s = titleSimilarity(t.tokens, o.titleTokens, p.vocabulary, corpus) * t.weight;
+    // Un titre anglais se compare aussi traduit : « Junior Buyer » (Les Colettes,
+    // CDI à Issy) n'avait aucun mot commun avec « Acheteur » et finissait 213ᵉ
+    // à 26/100 (recherche du 19 octobre 2026) ; 12ᵉ à 74 une fois traduit. Les
+    // postes visés, eux, ne sont pas traduits : sur les bancs, l'ancien NDCG
+    // perdait un point.
+    const s = Math.max(
+      titleSimilarity(t.tokens, o.titleTokens, p.vocabulary, corpus),
+      o.frenchTitleTokens ? titleSimilarity(t.tokens, o.frenchTitleTokens, p.vocabulary, corpus) : 0
+    ) * t.weight;
     if (s > score) {
       score = s;
       best = t.label;

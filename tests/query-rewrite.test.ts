@@ -60,6 +60,7 @@ describe("un intitulé anglais reçoit sa traduction", () => {
     expect(frenchTitle("Senior Java Developer")).toBe("Développeur Java");
     expect(frenchTitle("Full Stack Developer")).toBe("Développeur full stack");
     expect(frenchTitle("Project Manager")).toBe("Chef de projet");
+    expect(frenchTitle("Purchaser")).toBe("Acheteur");
   });
 
   it("préfère ne rien traduire plutôt que mal traduire", () => {

@@ -74,7 +74,7 @@ export function rescoreAllOffres(profile: ProfileFull): number {
  * les offres déjà collectées qu'au prochain scan ou au prochain enregistrement
  * du profil — 1 103 offres classées selon l'ancienne règle d'ici là.
  */
-export const SCORING_VERSION = "2026-10-19.2";
+export const SCORING_VERSION = "2026-10-19.3";
 const SETTING = "scoring:version";
 
 /** Recalcule toutes les notes si elles datent d'une autre version de la note ou de la relecture. */

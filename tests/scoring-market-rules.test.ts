@@ -162,3 +162,19 @@ describe("un mot de périmètre dans le titre", () => {
     expect(joaillerie).toBeLessThan(indirect);
   });
 });
+
+describe("un intitulé d'offre en anglais", () => {
+  it("se compare aussi traduit aux postes visés (cas réel : « Junior Buyer », 26 → 74)", async () => {
+    const { scoreOffresLocal } = await import("@/lib/scoring/local");
+    const profile: ProfileFull = {
+      sectors: [], target_titles: ["Acheteur Junior", "Acheteur"], target_countries: ["France"], search_area: "", sources_enabled: [], preferred_contracts: ["cdi"],
+      extraction_confidence: 0, experiences: [], educations: [], skills: [], languages: [],
+    };
+    const offer = (title: string) => ({ title, company: "X", country: "France", description_text: "Vous gérez un portefeuille de fournisseurs." });
+    const [buyer, purchaser, partner] = scoreOffresLocal(profile, [offer("Junior Buyer H/F"), offer("Purchaser"), offer("Procurement Partner")]).map((r) => r.breakdown.title);
+    expect(buyer).toBeGreaterThanOrEqual(80);
+    expect(purchaser).toBeGreaterThanOrEqual(80);
+    // Hors du glossaire, rien n'est traduit : mieux vaut aucune traduction qu'une fausse.
+    expect(partner).toBe(0);
+  });
+});

@@ -149,7 +149,7 @@ export function withoutGenderForms(title: string): string {
 /** Mot de tête anglais → métier français. */
 const EN_HEADS: Record<string, string> = {
   engineer: "Ingénieur", developer: "Développeur", technician: "Technicien", analyst: "Analyste",
-  consultant: "Consultant", architect: "Architecte", buyer: "Acheteur", accountant: "Comptable",
+  consultant: "Consultant", architect: "Architecte", buyer: "Acheteur", purchaser: "Acheteur", accountant: "Comptable",
   nurse: "Infirmier", teacher: "Enseignant", trainer: "Formateur", manager: "Responsable", director: "Directeur",
 };
 
