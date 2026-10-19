@@ -117,8 +117,10 @@ describe("Talent.com", () => {
     const searches = requests.filter((r) => new URL(r).pathname === "/jobs").map((r) => new URL(r));
     const fr = searches.filter((u) => u.hostname === "fr.talent.com");
     const be = searches.filter((u) => u.hostname === "be.talent.com");
-    expect(fr.every((u) => u.searchParams.get("l") === "Rhône")).toBe(true);
-    expect(be.every((u) => u.searchParams.get("l") === "")).toBe(true);
+    // Autour de la ville de la zone, avec un rayon : le site lit mal les noms de
+    // département (« Acheteur » dans le « Finistère » : aucune offre ; autour de Quimper : 13).
+    expect(fr.every((u) => u.searchParams.get("l") === "Lyon" && u.searchParams.get("radius") === "80")).toBe(true);
+    expect(be.every((u) => u.searchParams.get("l") === "" && !u.searchParams.has("radius"))).toBe(true);
     expect(new Set(fr.map((u) => u.searchParams.get("k")))).toEqual(new Set(["Comptable", "Contrôleur de gestion"]));
     // 20 offres pour 2 pays → 10 par pays → 5 par poste visé dans chaque pays.
     expect(offres.filter((o) => o.title.startsWith("Comptable"))).toHaveLength(10);

@@ -19,9 +19,14 @@ const SITE = "https://candidat.francetravail.fr";
 const LANDING = `${SITE}/offres/emploi/developpeur-php/finistere/s29m1d29`;
 const sample = (name: string) => fs.readFileSync(path.join(__dirname, "samples", "francetravail", name), "utf-8");
 
-function landing(): Response {
-  const res = new Response(sample("recherche.html"), { status: 410, headers: { "content-type": "text/html; charset=utf-8" } });
-  Object.defineProperty(res, "redirected", { value: true });
+/**
+ * Réponse telle que l'application la reçoit : Next recopie chaque réponse de
+ * fetch en gardant son adresse finale, mais pas `redirected`, qui y vaut false.
+ * Le scraper s'y fiait : « France Travail HTTP 410 » et un scan partiel pour la
+ * recherche « Acheteur » du 19 octobre 2026.
+ */
+function landing(status = 410): Response {
+  const res = new Response(sample("recherche.html"), { status, headers: { "content-type": "text/html; charset=utf-8" } });
   Object.defineProperty(res, "url", { value: LANDING });
   return res;
 }
@@ -63,6 +68,12 @@ describe("France Travail : page métier × lieu et recherches en erreur", () => 
     expect(searches).toBe(1);
     // « Développeur PHP » : aucune des cinq cartes n'en parle (Tech Lead .Net, station-service…).
     expect((await scrape(landing, "Développeur PHP")).offres).toEqual([]);
+  });
+
+  it("reconnaît la page à son adresse, même servie en 200", async () => {
+    const { offres, searches } = await scrape(() => landing(200));
+    expect(offres.map((o) => o.source_id)).toEqual(["900EEEE"]);
+    expect(searches).toBe(1);
   });
 
   it("les mots de la requête couvrent le féminin et le pluriel", async () => {

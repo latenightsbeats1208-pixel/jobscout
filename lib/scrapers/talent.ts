@@ -1,4 +1,4 @@
-import type { SearchArea } from "@/lib/geo/fr";
+import { searchAreaCity, type SearchArea } from "@/lib/geo/fr";
 import { quotaPerQuery } from "@/lib/scan/search-plan";
 import "server-only";
 import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./base";
@@ -213,9 +213,28 @@ function parseSearchPage(html: string, domain: Domain): Card[] {
   return out;
 }
 
+/**
+ * Lieu de recherche Talent.com pour une zone : la ville de la zone et un rayon.
+ * Le site lit mal les noms de département : « Acheteur » dans le « Finistère »
+ * ou le « Bas-Rhin » ne rendait rien, dans le « Rhône » 3 offres ; autour de
+ * Quimper (80 km), Strasbourg ou Lyon (50 km), 13, 10 et 19 (relevé le
+ * 19 octobre 2026). Le rayon couvre le département ; ce qui déborde sur les
+ * départements voisins est rangé « près de votre zone » par la note.
+ */
+export function talentLocation(area: SearchArea): { l: string; radius: number } {
+  const city = searchAreaCity(area)?.replace(/, France$/, "");
+  if (!city) return { l: area.name, radius: area.kind === "region" ? 100 : 80 };
+  return { l: city, radius: area.kind === "region" ? 100 : 80 };
+}
+
 async function fetchSearchPage(domain: Domain, keywords: string, page: number, area?: SearchArea | null): Promise<Card[]> {
-  // La zone est française : elle ne s'applique qu'à fr.talent.com (vérifié : « Rhône », octobre 2026).
-  const params = new URLSearchParams({ k: keywords, l: area && domain.country === "France" ? area.name : "" });
+  // La zone est française : elle ne s'applique qu'à fr.talent.com.
+  const params = new URLSearchParams({ k: keywords, l: "" });
+  if (area && domain.country === "France") {
+    const { l, radius } = talentLocation(area);
+    params.set("l", l);
+    params.set("radius", String(radius));
+  }
   if (page > 1) params.set("p", String(page));
   const res = await fetch(`https://${domain.host}/jobs?${params}`, { headers: BROWSER_HEADERS });
   if (!res.ok) throw new Error(`Talent.com ${domain.host} HTTP ${res.status}`);

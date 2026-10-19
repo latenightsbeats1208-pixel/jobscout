@@ -21,6 +21,8 @@ const API_BASE = "https://api.francetravail.io/partenaire/offresdemploi/v2";
 const TOKEN_URL =
   "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=/partenaire";
 const SEARCH_PAGE = "https://candidat.francetravail.fr/offres/recherche";
+/** Page métier × lieu vers laquelle le site redirige une recherche courante (« /offres/emploi/acheteur/finistere/s11m14d29 »). */
+const LANDING_PATH = /^\/offres\/emploi\//;
 const DETAIL_PAGE = "https://candidat.francetravail.fr/offres/recherche/detail";
 // La page de détail n'embarque plus la description : le composant
 // <descriptif-offre> la charge dans le navigateur depuis ce JSON (sans clé ;
@@ -271,12 +273,16 @@ async function fetchHtmlPage(keywords: string, page: number, area?: SearchArea |
   // « 69D » : un département, « 84R » : une région (vérifié sur le site, octobre 2026).
   if (area) params.set("lieux", `${area.code}${area.kind === "region" ? "R" : "D"}`);
   const res = await fetch(`${SEARCH_PAGE}?${params}`, { headers: BROWSER_HEADERS });
-  // Recherche courante (« Développeur PHP » dans le Finistère, « Conducteur de
-  // travaux » dans le Puy-de-Dôme) : le site redirige vers sa page métier × lieu,
-  // servie en 410 mais avec ses 20 premières offres. La rejeter laissait la
-  // source à « 0 vue, 0 échec », sans erreur (audit d'octobre 2026 : 0 offre
-  // France Travail pour un développeur PHP, 24 sur le site).
-  if (res.status === 410 && res.redirected) return { cards: parseHtmlSearch(await res.text()), landing: true };
+  // Recherche courante (« Développeur PHP » dans le Finistère, « Acheteur » dans
+  // le Finistère) : le site redirige vers sa page métier × lieu, servie en 410
+  // mais avec ses 20 premières offres. La rejeter laissait la source à « 0 vue,
+  // 0 échec » (audit d'octobre 2026). On la reconnaît à son code et à son
+  // adresse, jamais à `res.redirected` : dans l'application, Next recopie chaque
+  // réponse de fetch sans cet indicateur, qui y vaut toujours false (recherche
+  // « Acheteur » du 19 octobre 2026 : « France Travail HTTP 410 », scan partiel).
+  if (res.status === 410 || LANDING_PATH.test(new URL(res.url || SEARCH_PAGE).pathname)) {
+    return { cards: parseHtmlSearch(await res.text()), landing: true };
+  }
   if (!res.ok) throw new Error(`France Travail HTTP ${res.status}`);
   return { cards: parseHtmlSearch(await res.text()), landing: false };
 }
@@ -337,7 +343,8 @@ async function fetchDetailPage(url: string, id: string): Promise<Detail | null> 
     const res = await fetch(url, { headers: BROWSER_HEADERS });
     if (!res.ok) return null;
     // Offre retirée renvoyée vers la recherche : ses cartes sont d'autres offres.
-    if (res.redirected && !res.url.includes(`/detail/${id}`)) {
+    // L'adresse finale suffit (`res.redirected` est perdu dans l'application, cf. fetchHtmlPage).
+    if (res.url && !res.url.includes(`/detail/${id}`)) {
       return { rejected: "page de résultats au lieu du détail de l'offre" };
     }
     const doc = parseDocument(await res.text());
