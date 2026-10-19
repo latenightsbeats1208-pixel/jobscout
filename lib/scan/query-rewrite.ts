@@ -25,7 +25,15 @@ const GENDER_MARKS = [
 const CREDENTIALS = /\s*\b(?:dipl[oô]m[ée]e?s?(?:\s+d['’]\s*[ée]tat)?|d\.\s?e\.?|certifi[ée]e?s?)(?=\s|$|,)/giu;
 const TRAILING_DE = /\s+(?:DE|D\.E\.?)$/;
 
-/** Grade : il qualifie la personne recherchée, la note s'en charge. */
+/**
+ * Grade : il qualifie la personne recherchée, la note s'en charge. Sauf
+ * « junior » : pour un débutant, c'est la requête qui trouve les postes faits
+ * pour lui. Retiré, « Acheteur Junior » devenait « Acheteur », noyé parmi 921
+ * offres France Travail en Île-de-France, et aucune des offres « Acheteur
+ * Junior » du site n'était collectée (19 octobre 2026). Il est donc gardé, en
+ * plus de l'intitulé sans grade.
+ */
+const JUNIOR = norm("junior");
 const QUALIFIERS = new Set(
   ["principal", "principale", "senior", "sénior", "junior", "confirmé", "confirmée", "expérimenté", "expérimentée", "débutant", "débutante"].map(norm)
 );
@@ -108,12 +116,14 @@ export function rewriteTitle(title: string): string[] {
     const words = clean(part.replace(CREDENTIALS, " ").replace(TRAILING_DE, ""))
       .split(" ")
       .filter(Boolean)
-      .map((w, i) => (english ? w : masculine(w, i === 0)))
-      .filter((w) => !QUALIFIERS.has(norm(w)));
-    let p = clean(words.join(" "));
-    const narrower = clean(p.replace(STACK_WORDS, " "));
-    if (narrower.split(" ").length >= 2) p = narrower;
-    if (p) out.push(p);
+      .map((w, i) => (english ? w : masculine(w, i === 0)));
+    const junior = words.some((w) => norm(w) === JUNIOR);
+    for (const keep of junior ? [JUNIOR, null] : [null]) {
+      let p = clean(words.filter((w) => !QUALIFIERS.has(norm(w)) || norm(w) === keep).join(" "));
+      const narrower = clean(p.replace(STACK_WORDS, " "));
+      if (narrower.split(" ").length >= 2) p = narrower;
+      if (p && !out.includes(p)) out.push(p);
+    }
   }
   return out.length ? out : [clean(title)];
 }

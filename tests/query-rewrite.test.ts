@@ -36,6 +36,18 @@ describe("un intitulé de CV devient une requête", () => {
     expect(rewriteTitle("Employee Relations Manager")).toEqual(["Employee Relations Manager"]);
   });
 
+  it("garde « Junior », en plus de l'intitulé sans grade : c'est la requête qui trouve les postes d'un débutant", () => {
+    // 19 octobre 2026 : « Acheteur Junior » devenait « Acheteur », et aucune offre « Acheteur Junior » n'était collectée.
+    expect(rewriteTitle("Acheteur Junior")).toEqual(["Acheteur Junior", "Acheteur"]);
+    expect(rewriteTitle("Chargée de marketing junior")).toEqual(["Chargé de marketing junior", "Chargé de marketing"]);
+    // Les autres grades restent retirés.
+    expect(rewriteTitle("Acheteur Senior")).toEqual(["Acheteur"]);
+    expect(buildSearchPlan({ target_titles: ["Acheteur Junior", "Acheteur"], experiences: [], sectors: [], search_area: "R:11" }).queries).toEqual([
+      "Acheteur Junior",
+      "Acheteur",
+    ]);
+  });
+
   it("garde la partie droite d'une barre oblique quand c'est un poste", () => {
     expect(rewriteTitle("Comptable / Assistante de gestion")).toEqual(["Comptable", "Assistant de gestion"]);
   });
