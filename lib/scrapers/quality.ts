@@ -96,8 +96,30 @@ export function describesTitle(title: string, description: string, location: str
   const words = new Set(tokenize(description));
   const stems = new Set([...words].map((w) => w.slice(0, 5)));
   // « tech » d'un titre abrège « technicien » : on l'accepte comme preuve.
-  return titleWords.some((t) => words.has(t) || (t.length >= 5 && stems.has(t.slice(0, 5))));
+  if (titleWords.some((t) => words.has(t) || (t.length >= 5 && stems.has(t.slice(0, 5))))) return true;
+  // Le métier et son activité ne partagent pas toujours leur radical, et une
+  // annonce en anglais ne reprend pas le titre français.
+  const text = ` ${tokenize(description).join(" ")} `;
+  return titleWords.some((t) =>
+    (RELATED[t] ?? []).some((r) => (r.includes(" ") ? text.includes(` ${tokenize(r).join(" ")} `) : [...words].some((w) => w.startsWith(r))))
+  );
 }
+
+/**
+ * Mots d'un intitulé et ceux de leur famille ou de leur traduction qu'une
+ * description emploie à leur place. Une annonce d'acheteur parle d'« achats »
+ * (« vous pilotez une ou plusieurs catégories d'achats ») ou, en anglais, de
+ * « buyer » et de « procurement » : 13 annonces sur 223 d'une recherche
+ * « Acheteur » perdaient leur description, prises pour celles d'un autre poste
+ * (19 octobre 2026).
+ */
+// Un acheteur public parle de « marchés publics » et de « commande publique ».
+const ACHAT = ["achat", "buyer", "purchas", "procurement", "approvisionn", "marches publics", "commande publique"];
+const VENTE = ["vente", "sales", "seller"];
+const RELATED: Record<string, string[]> = {
+  acheteur: ACHAT, acheteuse: ACHAT, buyer: ["achat", "acheteu", "purchas", "procurement"], purchaser: ACHAT,
+  vendeur: VENTE, vendeuse: VENTE,
+};
 
 export function assessQuality(o: QualityInput): QualityResult {
   const issues: QualityIssue[] = [];

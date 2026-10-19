@@ -95,3 +95,16 @@ describe("résumé pour le journal du scan", () => {
     expect(summarizeIssues({})).toBeNull();
   });
 });
+
+describe("le métier et son activité ne partagent pas toujours leur radical", () => {
+  // Recherche « Acheteur » du 19 octobre 2026 : 13 annonces sur 223 perdaient leur description.
+  it("une annonce d'acheteur qui parle d'achats, en anglais ou de marchés publics décrit bien le poste", () => {
+    expect(describesTitle("Acheteur confirmé F/H", long("Rattaché au responsable, vous pilotez une ou plusieurs catégories d'achats directs et indirects."), "Créteil")).toBe(true);
+    expect(describesTitle("Acheteur H/F", long("As a Buyer in our procurement team, you negotiate with suppliers worldwide."), "Paris")).toBe(true);
+    expect(describesTitle("Acheteur H/F", long("Élaboration des procédures de marchés publics : appels d'offres, négociation, MAPA."), null)).toBe(true);
+  });
+
+  it("une description d'un autre poste reste écartée", () => {
+    expect(describesTitle("Acheteur H/F", long("Vous préparez les commandes des clients en entrepôt et chargez les camions chaque matin."), null)).toBe(false);
+  });
+});
