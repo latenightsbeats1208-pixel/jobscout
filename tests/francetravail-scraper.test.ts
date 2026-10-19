@@ -61,7 +61,7 @@ async function fakeFetch(input: string | URL | Request): Promise<Response> {
   const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
   requested.push(url.pathname);
   if (url.origin === SITE && url.pathname === "/offres/recherche") {
-    return html(url.searchParams.get("page") === "1" ? sample("recherche.html") : "<html><body></body></html>");
+    return html(url.searchParams.get("range") === "0-19" ? sample("recherche.html") : "<html><body></body></html>");
   }
   const route = url.origin === SITE ? ROUTES[url.pathname] : undefined;
   if (!route) {

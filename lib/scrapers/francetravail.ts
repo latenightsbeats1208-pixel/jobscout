@@ -23,6 +23,8 @@ const TOKEN_URL =
 const SEARCH_PAGE = "https://candidat.francetravail.fr/offres/recherche";
 /** Page métier × lieu vers laquelle le site redirige une recherche courante (« /offres/emploi/acheteur/finistere/s11m14d29 »). */
 const LANDING_PATH = /^\/offres\/emploi\//;
+/** Offres par page de résultats du site. */
+const PAGE_SIZE = 20;
 const DETAIL_PAGE = "https://candidat.francetravail.fr/offres/recherche/detail";
 // La page de détail n'embarque plus la description : le composant
 // <descriptif-offre> la charge dans le navigateur depuis ce JSON (sans clé ;
@@ -265,10 +267,13 @@ function matchesQuery(card: HtmlCard, stems: string[]): boolean {
  * page « /offres/emploi/<métier>/<lieu> », qui n'a qu'une page.
  */
 async function fetchHtmlPage(keywords: string, page: number, area?: SearchArea | null): Promise<{ cards: HtmlCard[]; landing: boolean }> {
+  // Le site pagine par tranches de 20 avec `range` (« 20-39 ») et ignore `page` :
+  // les pages 2 et 3 redonnaient la première, et la lecture s'arrêtait à 20 offres
+  // par requête (« Acheteur » en Île-de-France : 921 annoncées, 20 lues, 19 octobre 2026).
   const params = new URLSearchParams({
     motsCles: keywords,
     offresPartenaires: "true",
-    page: String(page),
+    range: `${(page - 1) * PAGE_SIZE}-${page * PAGE_SIZE - 1}`,
   });
   // « 69D » : un département, « 84R » : une région (vérifié sur le site, octobre 2026).
   if (area) params.set("lieux", `${area.code}${area.kind === "region" ? "R" : "D"}`);
@@ -466,7 +471,11 @@ export const francetravailScraper: Scraper = {
           // La page métier × lieu liste tout le métier : « Développeur PHP » dans
           // le Finistère y ramenait vingt postes Java, C# ou JavaScript, qui
           // passaient devant les offres PHP. On n'en garde que ce qui parle de la requête.
-          const cards = result.landing ? result.cards.filter((c) => matchesQuery(c, stems)) : result.cards;
+          // Même tri au-delà de la première page : une fois les vraies correspondances
+          // épuisées, le site passe aux offres voisines (« Acheteur » en Île-de-France,
+          // page 3 : « Gérant d'agence », « Trader Radio/Cinéma »), et moins de dix
+          // offres retenues sur une page arrêtent la lecture.
+          const cards = result.landing || page > 1 ? result.cards.filter((c) => matchesQuery(c, stems)) : result.cards;
           let added = 0;
           for (const c of cards) {
             if (!seen.has(c.id) && taken < quota) {

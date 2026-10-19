@@ -87,3 +87,60 @@ describe("France Travail : page métier × lieu et recherches en erreur", () => 
     await expect(scrape(() => new Response("", { status: 503 }))).rejects.toThrow("France Travail HTTP 503");
   });
 });
+
+describe("France Travail : pagination", () => {
+  // Le site pagine avec `range` (« 20-39 ») et ignore `page` : les pages 2 et 3
+  // redonnaient la première, et chaque requête s'arrêtait à 20 offres
+  // (« Acheteur » en Île-de-France : 921 annoncées, 20 lues, 19 octobre 2026).
+  const card = (id: string, title = "Acheteur (H/F)") => `
+    <li data-id-offre="${id}" class="result"><a href="/offres/recherche/detail/${id}"><div class="media-body">
+      <h2 class="t4 media-heading"><span class="media-heading-title">${title}</span></h2>
+      <p translate="no" class="subtext">ACHATS SA - <span>75 - Paris</span></p>
+      <p class="description">Au sein de la direction des achats, vous pilotez un portefeuille de fournisseurs et négociez les contrats...</p>
+      <p class="contrat visible-xs">CDI</p><p class="date">Publié hier</p>
+    </div></a></li>`;
+
+  it("lit les tranches suivantes avec `range`, jusqu'au quota de la requête", async () => {
+    const ranges: string[] = [];
+    vi.stubEnv("FT_CLIENT_ID", "");
+    vi.stubEnv("FT_CLIENT_SECRET", "");
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      if (url.pathname !== "/offres/recherche") return new Response(null, { status: 204 });
+      const range = url.searchParams.get("range") ?? "";
+      ranges.push(range);
+      const start = Number(range.split("-")[0]);
+      return new Response(Array.from({ length: 20 }, (_, i) => card(`9${String(start + i).padStart(6, "0")}`)).join(""), { headers: { "content-type": "text/html" } });
+    });
+    const { francetravailScraper } = await import("@/lib/scrapers/francetravail");
+    const offres: ScrapedOffre[] = [];
+    for await (const o of francetravailScraper.scrape({ queries: ["Acheteur"], sectors: [], countries: ["France"], maxOffres: 45 }, () => {})) offres.push(o);
+    expect(ranges).toEqual(["0-19", "20-39", "40-59"]);
+    expect(offres).toHaveLength(45);
+    expect(new Set(offres.map((o) => o.source_id)).size).toBe(45);
+  });
+
+  it("s'arrête quand les pages suivantes passent aux offres voisines", async () => {
+    // « Acheteur Junior » : la deuxième page ramenait « Junior product engineer » et « Talent Acquisition ».
+    const ranges: string[] = [];
+    vi.stubEnv("FT_CLIENT_ID", "");
+    vi.stubEnv("FT_CLIENT_SECRET", "");
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      if (url.pathname !== "/offres/recherche") return new Response(null, { status: 204 });
+      const range = url.searchParams.get("range") ?? "";
+      ranges.push(range);
+      const start = Number(range.split("-")[0]);
+      const cards = Array.from({ length: 20 }, (_, i) =>
+        card(`8${String(start + i).padStart(6, "0")}`, start === 0 || i < 5 ? "Acheteur Junior (H/F)" : "Junior product engineer (H/F)")
+      );
+      return new Response(cards.join(""), { headers: { "content-type": "text/html" } });
+    });
+    const { francetravailScraper } = await import("@/lib/scrapers/francetravail");
+    const offres: ScrapedOffre[] = [];
+    for await (const o of francetravailScraper.scrape({ queries: ["Acheteur Junior"], sectors: [], countries: ["France"], maxOffres: 60 }, () => {})) offres.push(o);
+    expect(ranges).toEqual(["0-19", "20-39"]);
+    expect(offres).toHaveLength(25);
+    expect(offres.every((o) => o.title.startsWith("Acheteur Junior"))).toBe(true);
+  });
+});

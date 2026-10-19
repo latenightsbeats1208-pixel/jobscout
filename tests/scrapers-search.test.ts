@@ -234,7 +234,7 @@ describe("France Travail (pages publiques)", () => {
   it("offre anonyme : ni département pris pour l'entreprise, ni date perdue", async () => {
     respond = (url) => {
       if (url.pathname === "/offres/recherche") {
-        return html(url.searchParams.get("page") === "1"
+        return html(url.searchParams.get("range") === "0-19"
           ? card("901AAAA", "26 - <span>Romans-sur-Isère</span>", "Publié hier") + card("901BBBB", "RAVI PROPRETE - <span>26 - Chatuzange-le-Goubet</span>", "Publié il y a 3 jours")
           : "");
       }
