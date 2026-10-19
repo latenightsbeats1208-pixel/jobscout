@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, ArrowUpRight, Briefcase, CalendarDays, ChevronDown, MapPin, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
 import { Chip } from "@/components/ui/chip";
 import { Badge } from "@/components/ui/badge";
-import { cn, formatRelativeDate, fromSqliteUtc } from "@/lib/utils";
+import { cn, fromSqliteUtc } from "@/lib/utils";
+import { RelativeTime } from "@/components/ui/relative-time";
 import type { OffreSummary, OffersSearch, OffersSort } from "@/lib/db/offres";
 import { CONTRACT_LABELS, CONTRACT_ORDER, type ContractCategory } from "@/lib/contracts";
 import { SOURCES_META } from "@/lib/sources-meta";
@@ -392,10 +393,11 @@ function otherSources(offer: OffreSummary): string[] {
 
 /** Date de publication, ou à défaut date de première collecte. */
 function OfferDate({ offer, plain = false }: { offer: OffreSummary; plain?: boolean }) {
+  // Calculée dans le navigateur seulement (voir RelativeTime).
   const text = offer.posted_at
-    ? formatRelativeDate(offer.posted_at)
+    ? <RelativeTime iso={offer.posted_at} />
     : offer.first_seen_at
-    ? `repérée ${formatRelativeDate(fromSqliteUtc(offer.first_seen_at))}`
+    ? <RelativeTime iso={fromSqliteUtc(offer.first_seen_at)} prefix="repérée " />
     : null;
   if (!text) return null;
   if (plain) return <>{text}</>;

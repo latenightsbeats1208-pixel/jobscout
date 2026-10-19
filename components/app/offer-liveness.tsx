@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, RotateCcw } from "lucide-react";
-import { formatRelativeDate, fromSqliteUtc } from "@/lib/utils";
+import { fromSqliteUtc } from "@/lib/utils";
+import { RelativeTime } from "@/components/ui/relative-time";
 
 type LivenessState = { checkable: boolean; closed_at: string | null; checked_at: string | null };
 
@@ -49,7 +50,7 @@ export function OfferLiveness({ offreId, sourceLabel, initial }: { offreId: numb
         <div className="min-w-0 text-small">
           <p className="font-semibold">Offre retirée par {sourceLabel}</p>
           <p className="mt-1 text-textSecondary">
-            L&apos;annonce n&apos;est plus en ligne ({formatRelativeDate(fromSqliteUtc(state.closed_at))}) : le poste est sans doute pourvu.
+            L&apos;annonce n&apos;est plus en ligne (<RelativeTime iso={fromSqliteUtc(state.closed_at)} />) : le poste est sans doute pourvu.
             Inutile d&apos;y préparer une candidature.
           </p>
           <button type="button" onClick={() => check(true)} disabled={checking} className="mt-2 inline-flex items-center gap-1.5 font-semibold text-accent hover:underline disabled:opacity-50">
@@ -66,7 +67,8 @@ export function OfferLiveness({ offreId, sourceLabel, initial }: { offreId: numb
         "Vérification de l'annonce…"
       ) : state.checked_at ? (
         <>
-          <CheckCircle2 className="h-3.5 w-3.5 text-success" /> Toujours en ligne sur {sourceLabel} · vérifiée {formatRelativeDate(fromSqliteUtc(state.checked_at))}
+          <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+          <span>Toujours en ligne sur {sourceLabel} · vérifiée <RelativeTime iso={fromSqliteUtc(state.checked_at)} /></span>
         </>
       ) : failed ? (
         `Impossible de vérifier que l'annonce est toujours sur ${sourceLabel}.`
