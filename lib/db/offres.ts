@@ -1,6 +1,7 @@
 import "server-only";
-import { getDb, asJson, parseJson, dbFingerprint } from "./index";
+import { getDb, asJson, parseJson, dbFingerprint, getSetting, setSetting } from "./index";
 import { syncDuplicates } from "./duplicates";
+import { currentSearch } from "./scans";
 import type { ScrapedOffre } from "@/lib/scrapers/base";
 import type { ScoreResult } from "@/lib/scoring/local";
 import type { AiReview } from "@/lib/scoring/review";
@@ -118,6 +119,18 @@ const OFFER_PAGE_SIZE = 24;
  * (appeler syncDuplicates() avant).
  */
 export const VISIBLE_SQL = "duplicate_of IS NULL AND closed_at IS NULL";
+
+/**
+ * VISIBLE_SQL, moins les offres d'une recherche précédente quand la liste les
+ * masque : l'accueil compte et suggère alors ce que la liste montre.
+ */
+export function visibleSql(): string {
+  const search = getSetting(CURRENT_SEARCH_ONLY) === "1" ? currentSearch() : null;
+  // started_at vient de datetime('now') : on le vérifie avant de l'écrire dans la requête.
+  if (!search || !/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(search.since)) return VISIBLE_SQL;
+  const since = `'${search.since}'`;
+  return `${VISIBLE_SQL} AND (scraped_at >= ${since} OR id IN (SELECT duplicate_of FROM offres WHERE duplicate_of IS NOT NULL AND scraped_at >= ${since}))`;
+}
 // Même classement pour la liste, l’API paginée et les suggestions de l’accueil.
 // Le bonus de fraîcheur reste volontairement léger face au score du profil.
 // Départage final par id : sans lui, l’ordre des ex æquo dépend du plan de
@@ -160,8 +173,10 @@ type OffresCache = {
   /** Titre, entreprise, pays, lieu et description complète, sans accents ; construit à la première recherche. */
   haystacks: Map<number, string> | null;
   facets: OffersSearch["facets"];
-  /** Échelle relative des notes : offres en ligne et dans les critères. */
+  /** Échelle relative des notes : offres en ligne et dans les critères, de la recherche en cours. */
   scale: ScoreScale | null;
+  /** Offres en ligne d'une recherche précédente (voir currentSearch) ; null s'il n'y en a pas. */
+  previous: PreviousSearch | null;
 };
 
 const ORDER_TTL_MS = 60_000;
@@ -171,7 +186,7 @@ type CacheRow = Pick<
   OffreRow,
   "id" | "source" | "url" | "title" | "company" | "country" | "location" |
   "contract_type" | "description_status" | "posted_at" | "score" | "is_vie" |
-  "first_seen_at" | "closed_at" | "duplicate_of"
+  "first_seen_at" | "closed_at" | "duplicate_of" | "scraped_at"
 > & {
   head: string | null; excerpt: string | null; score_breakdown: string | null; has_cv: number; has_lm: number;
   feedback_verdict: FeedbackVerdict | null; feedback_reason: string | null;
@@ -185,7 +200,7 @@ function buildOffresCache(fingerprint: string): OffresCache {
   const rows = getDb().prepare(`
     SELECT o.id, o.source, o.url, o.title, o.company, o.country, o.location,
       o.contract_type, o.description_status, o.posted_at, o.score, o.score_breakdown, o.is_vie,
-      o.first_seen_at, o.closed_at, o.duplicate_of,
+      o.first_seen_at, o.closed_at, o.duplicate_of, o.scraped_at,
       substr(o.description_text, 1, 4000) AS head,
       substr(o.description_text, 1, 1000) AS excerpt,
       EXISTS(SELECT 1 FROM documents WHERE offre_id = o.id AND type = 'cv') AS has_cv,
@@ -195,6 +210,16 @@ function buildOffresCache(fingerprint: string): OffresCache {
     ORDER BY ${LIST_ORDER}
   `).all() as CacheRow[];
 
+  // Recherche en cours : une offre en fait partie si elle, ou une autre
+  // publication de son groupe, a été revue depuis son premier scan.
+  const search = currentSearch();
+  const current = new Set<number>();
+  for (const row of rows) if (!search || row.scraped_at >= search.since) current.add(row.duplicate_of ?? row.id);
+  const previousCount = search ? rows.filter((r) => r.duplicate_of == null && !r.closed_at && !current.has(r.id)).length : 0;
+  // Réglage de la liste : n'afficher que la recherche en cours. Rien n'est
+  // effacé ; la fiche d'une offre masquée reste accessible par son adresse.
+  const hidePrevious = !!search && getSetting(CURRENT_SEARCH_ONLY) === "1";
+
   const contractCounts = Object.fromEntries(CONTRACT_ORDER.map((contract) => [contract, 0])) as Record<ContractCategory, number>;
   const countries = new Set<string>();
   const sources = new Set<string>();
@@ -203,19 +228,20 @@ function buildOffresCache(fingerprint: string): OffresCache {
   const variants: CacheRow[] = [];
   let open = 0;
   let closed = 0;
-  const scores: number[] = [];
+  const scores = new Map<number, number>();
   for (const row of rows) {
     // Un doublon n'a pas sa propre ligne : il s'affiche sous l'offre de son groupe.
     if (row.duplicate_of != null) {
       variants.push(row);
       continue;
     }
+    if (hidePrevious && !current.has(row.id)) continue;
     const contract_category = classifyContract({ ...row, description_text: row.head ?? "" });
     // Facettes et compteurs décrivent ce que la liste montre par défaut : les offres en ligne.
     if (row.closed_at) closed++;
     else {
       open++;
-      if (!parseJson<{ excluded?: string } | null>(row.score_breakdown, null)?.excluded) scores.push(row.score ?? 0);
+      if (!parseJson<{ excluded?: string } | null>(row.score_breakdown, null)?.excluded) scores.set(row.id, row.score ?? 0);
       contractCounts[contract_category]++;
       if (row.country) countries.add(row.country);
       sources.add(row.source);
@@ -242,8 +268,15 @@ function buildOffresCache(fingerprint: string): OffresCache {
     rep.variants.push({ id: v.id, source: v.source, location: v.location, closed: !!v.closed_at });
     if (!rep.closed_at && !v.closed_at) sources.add(v.source);
   }
+  // L'échelle se calcule sur la recherche en cours : sous un profil Acheteur,
+  // les 1 392 offres commerciales d'une recherche précédente, mal notées pour
+  // lui, faisaient passer une offre à 31/100, 188ᵉ, pour « Haut de votre liste »
+  // (19 octobre 2026). Toute la liste tant que la recherche en compte moins de 10.
+  const currentScores = [...scores].filter(([id]) => current.has(id)).map(([, score]) => score);
+  const scale = scoreScale(currentScores.length >= 10 ? currentScores : [...scores.values()]);
   return {
-    fingerprint, byId, smart, orderedAt: Date.now(), haystacks: null, scale: scoreScale(scores),
+    fingerprint, byId, smart, orderedAt: Date.now(), haystacks: null, scale,
+    previous: search && previousCount ? { count: previousCount, since: search.since, hidden: hidePrevious } : null,
     facets: {
       total: open,
       countries: [...countries].sort((a, b) => a.localeCompare(b, "fr")),
@@ -258,6 +291,20 @@ function buildOffresCache(fingerprint: string): OffresCache {
 /** Échelle relative des notes de la liste (voir scoreDisplay) ; null sous 10 offres. */
 export function getScoreScale(): ScoreScale | null {
   return getOffresCache().scale;
+}
+
+const CURRENT_SEARCH_ONLY = "offres:current_search_only";
+
+/** Offres en ligne d'une recherche précédente, et si la liste les masque. */
+export type PreviousSearch = { count: number; since: string; hidden: boolean };
+
+export function previousSearchOffres(): PreviousSearch | null {
+  return getOffresCache().previous;
+}
+
+/** N'afficher dans la liste que les offres de la recherche en cours, ou tout afficher. */
+export function setCurrentSearchOnly(enabled: boolean): void {
+  setSetting(CURRENT_SEARCH_ONLY, enabled ? "1" : "0");
 }
 
 type DisplayBreakdown = { reason?: string; ai_verdict?: string; excluded?: string; plus?: string; minus?: string; location?: number };
@@ -397,7 +444,7 @@ export function suggestedOffres(
     FROM offres o
     -- Une offre jugée « pas pour moi », retirée par sa source ou en double n'est jamais suggérée.
     WHERE NOT EXISTS(SELECT 1 FROM offre_feedback f WHERE f.offre_id = o.id AND f.verdict = 'down')
-    AND ${VISIBLE_SQL}
+    AND ${visibleSql()}
     ${untracked ? "AND NOT EXISTS(SELECT 1 FROM candidatures c WHERE c.offre_id = o.id)" : ""}
     ORDER BY ${SMART_ORDER} LIMIT ?
   `).all(Math.max(1, Math.min(20, Math.trunc(limit)))) as (Pick<OffreRow, "id" | "title" | "company" | "country" | "location" | "posted_at" | "score"> & { score_breakdown: string | null })[];
@@ -579,14 +626,14 @@ export function getOffre(id: number): OffreFiltered | null {
 export function offresCounts() {
   syncDuplicates();
   const db = getDb();
-  const total = (db.prepare(`SELECT COUNT(*) as c FROM offres WHERE ${VISIBLE_SQL}`).get() as { c: number }).c;
+  const total = (db.prepare(`SELECT COUNT(*) as c FROM offres WHERE ${visibleSql()}`).get() as { c: number }).c;
   const today = (
-    db.prepare(`SELECT COUNT(*) as c FROM offres WHERE date(posted_at) = date('now') AND ${VISIBLE_SQL}`).get() as {
+    db.prepare(`SELECT COUNT(*) as c FROM offres WHERE date(posted_at) = date('now') AND ${visibleSql()}`).get() as {
       c: number;
     }
   ).c;
   // Colonne is_vie figée au scan : pour un chiffre qui corresponde à /offres?vie=1,
   // lire searchOffres().facets.contractCounts.vie (page /offres) ou vieFigure() (accueil).
-  const vie = (db.prepare(`SELECT COUNT(*) as c FROM offres WHERE is_vie = 1 AND ${VISIBLE_SQL}`).get() as { c: number }).c;
+  const vie = (db.prepare(`SELECT COUNT(*) as c FROM offres WHERE is_vie = 1 AND ${visibleSql()}`).get() as { c: number }).c;
   return { total, today, vie };
 }

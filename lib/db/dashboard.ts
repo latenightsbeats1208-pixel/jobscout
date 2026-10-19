@@ -1,7 +1,7 @@
 import "server-only";
 import { getDb } from "./index";
 import { syncDuplicates } from "./duplicates";
-import { VISIBLE_SQL } from "./offres";
+import { visibleSql } from "./offres";
 import { detectVie } from "@/lib/vie";
 
 // Requêtes propres à l'accueil. Les chiffres affichés doivent concorder avec la page
@@ -24,7 +24,7 @@ const RECENT_SQL = `(posted_at IS NOT NULL AND julianday('now') - julianday(post
 export function vieFigure(): DashboardFigure {
   syncDuplicates();
   const rows = getDb()
-    .prepare(`SELECT source, url, title, substr(description_text, 1, 4000) AS description, ${RECENT_SQL} AS recent FROM offres WHERE ${VISIBLE_SQL}`)
+    .prepare(`SELECT source, url, title, substr(description_text, 1, 4000) AS description, ${RECENT_SQL} AS recent FROM offres WHERE ${visibleSql()}`)
     .all() as { source: string; url: string | null; title: string | null; description: string | null; recent: number }[];
   let total = 0;
   let recent = 0;
@@ -43,7 +43,7 @@ export function highScoreFigure(threshold = 70): DashboardFigure {
     .prepare(
       `SELECT COUNT(*) AS total,
               COALESCE(SUM(${RECENT_SQL}), 0) AS recent
-       FROM offres WHERE score >= ? AND ${VISIBLE_SQL}`
+       FROM offres WHERE score >= ? AND ${visibleSql()}`
     )
     .get(threshold) as { total: number; recent: number };
   return { total: row.total, recent: row.recent };
@@ -54,7 +54,7 @@ export function untrackedOffresCount(): number {
   syncDuplicates();
   return (
     getDb()
-      .prepare(`SELECT COUNT(*) AS c FROM offres o WHERE NOT EXISTS(SELECT 1 FROM candidatures c WHERE c.offre_id = o.id) AND ${VISIBLE_SQL}`)
+      .prepare(`SELECT COUNT(*) AS c FROM offres o WHERE NOT EXISTS(SELECT 1 FROM candidatures c WHERE c.offre_id = o.id) AND ${visibleSql()}`)
       .get() as { c: number }
   ).c;
 }

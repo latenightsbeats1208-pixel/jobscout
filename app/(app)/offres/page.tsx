@@ -1,8 +1,9 @@
-import { offresCounts, parseMinScore, searchOffres } from "@/lib/db/offres";
+import { offresCounts, parseMinScore, previousSearchOffres, searchOffres } from "@/lib/db/offres";
 import { PageHeader } from "@/components/app/page-header";
 import { OffresList } from "./list";
 import { ScanButton } from "./scan-button";
 import { ReviewButton } from "./review-button";
+import { PreviousSearchNotice } from "./previous-search-notice";
 import { FeedbackSummary } from "@/components/app/offer-feedback";
 import { lastFinishedScan, type LastScan } from "@/lib/db/scans";
 import { sourceLabel } from "@/lib/sources-meta";
@@ -26,6 +27,7 @@ export default async function OffresPage({ searchParams }: { searchParams: Promi
   const initial = searchOffres({ contracts: vieOnly ? ["vie"] : [], minScore });
   // Total et V.I.E lus dans les facettes (sans le filtre de score, pour décrire la base) : mêmes chiffres que la liste et la puce « V.I.E ».
   const { total, contractCounts } = initial.facets;
+  const previous = previousSearchOffres();
   const subtitle = [
     plural(total, "offre"),
     `${numberFormat.format(offresCounts().today)} aujourd'hui`,
@@ -41,6 +43,7 @@ export default async function OffresPage({ searchParams }: { searchParams: Promi
         actions={<><ReviewButton /><ScanButton /></>}
       />
       <LastScanNotice scan={lastFinishedScan()} />
+      {previous && <PreviousSearchNotice {...previous} />}
       <FeedbackSummary className="-mt-4 mb-6 max-w-[75ch]" />
       <OffresList initialResult={initial} initialVieOnly={vieOnly} initialMinScore={minScore} />
     </>

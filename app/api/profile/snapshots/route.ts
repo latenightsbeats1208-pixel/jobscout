@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, getSetting, setSetting } from "@/lib/db";
 import { getProfile, saveProfile } from "@/lib/db/queries";
-import { listOffres, setOffreScore } from "@/lib/db/offres";
-import { scoreOffreLocal } from "@/lib/scoring/local";
+import { rescoreAllOffres } from "@/lib/scoring/rescore";
 import { ProfileFullSchema } from "@/lib/cv/types";
 
 export const runtime = "nodejs";
@@ -68,22 +67,10 @@ export async function POST(req: NextRequest) {
     }
     saveProfile(check.data);
 
-    // Re-score immédiat de toutes les offres avec le profil chargé (local, gratuit)
-    const loaded = getProfile()!;
-    let rescored = 0;
-    for (const o of listOffres()) {
-      setOffreScore(
-        o.id,
-        scoreOffreLocal(loaded, {
-          title: o.title,
-          company: o.company,
-          country: o.country,
-          description_text: o.description_text,
-          contract_type: o.contract_type,
-        })
-      );
-      rescored++;
-    }
+    // Même recalcul qu'à l'enregistrement du profil : rareté des mots sur toute
+    // la base, lieu, descriptions écartées et relectures IA encore valables. La
+    // boucle d'avant notait chaque offre seule, sans son lieu ni sa relecture.
+    const rescored = rescoreAllOffres(getProfile()!);
     return NextResponse.json({ ok: true, loaded: name, rescored });
   }
 
