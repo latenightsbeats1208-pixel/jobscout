@@ -1,15 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ArrowUpRight, AlertTriangle, CalendarDays, MapPin } from "lucide-react";
-import { getOffre } from "@/lib/db/offres";
+import { ArrowLeft, ArrowUpRight, AlertTriangle, CalendarDays, Copy, MapPin } from "lucide-react";
+import { getOffre, getScoreScale, type OffreFiltered } from "@/lib/db/offres";
 import { listDocuments, offreFolderPath } from "@/lib/db/documents";
 import { getDb } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { DescriptionRenderer } from "@/components/app/description-renderer";
 import { ActionsPanel } from "./actions";
-import { formatRelativeDate, scoreColor } from "@/lib/utils";
+import { OfferFeedbackControl } from "@/components/app/offer-feedback";
+import { getFeedback } from "@/lib/db/feedback";
+import { getOffreSiblings, type OffreSibling } from "@/lib/db/duplicates";
+import { CHECKABLE_SOURCES } from "@/lib/scrapers/liveness";
+import { OfferLiveness } from "@/components/app/offer-liveness";
+import { formatRelativeDate, fromSqliteUtc, scoreDisplay } from "@/lib/utils";
 import { CONTRACT_LABELS } from "@/lib/contracts";
 import { SOURCES_META } from "@/lib/sources-meta";
+import { effectiveVerdict, reviewReason } from "@/lib/scoring/review";
 
 export const dynamic = "force-dynamic";
 
@@ -25,11 +31,17 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
   const lmDocx = docs.find((d) => d.type === "lm" && d.format === "docx") ?? null;
   const msgDoc = docs.find((d) => d.type === "msg") ?? null;
   const existingApplication = getDb().prepare("SELECT status FROM candidatures WHERE offre_id = ? LIMIT 1").get(offre.id) as { status: string } | undefined;
-  const score = scoreColor(offre.score ?? 0);
+  const score = scoreDisplay(offre.score ?? 0, {
+    scale: getScoreScale(),
+    verdict: offre.score_breakdown?.ai_verdict,
+    excluded: !!offre.score_breakdown?.excluded,
+    outOfZone: offre.score_breakdown?.location === 20,
+  });
   const sourceLabel = SOURCES_META.find((source) => source.id === offre.source)?.label ?? offre.source;
   const contractLabel = offre.contract_category !== "autre" ? CONTRACT_LABELS[offre.contract_category] : null;
   // Le libellé brut de la source n'est répété que s'il apporte une précision (« Temps plein »…).
   const rawContract = offre.contract_type && offre.contract_type.trim().toLowerCase() !== contractLabel?.toLowerCase() ? offre.contract_type : null;
+  const siblings = getOffreSiblings(offre.id);
 
   return (
     <div>
@@ -50,8 +62,13 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-small text-textSecondary">
           {(offre.location || offre.country) && <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {offre.location ?? offre.country}{offre.location && offre.country && offre.location !== offre.country ? `, ${offre.country}` : ""}</span>}
-          {offre.posted_at && <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" /> {formatRelativeDate(offre.posted_at)}</span>}
-          <span className="font-medium">Score {score.label.toLowerCase()}</span>
+          {offre.posted_at ? (
+            <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" /> {formatRelativeDate(offre.posted_at)}</span>
+          ) : offre.first_seen_at ? (
+            // Sans date de publication, la première collecte dit au moins depuis quand l'offre est connue.
+            <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" /> Date inconnue · repérée {formatRelativeDate(fromSqliteUtc(offre.first_seen_at))}</span>
+          ) : null}
+          <span className="font-medium">{score.label}</span>
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-2">
           <Badge>{sourceLabel}</Badge>
@@ -61,6 +78,11 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
             Voir l'annonce d'origine <ArrowUpRight className="h-4 w-4" />
           </a>
         </div>
+        <OfferLiveness
+          offreId={offre.id}
+          sourceLabel={sourceLabel}
+          initial={{ checkable: CHECKABLE_SOURCES.has(offre.source), closed_at: offre.closed_at, checked_at: offre.checked_at }}
+        />
       </header>
 
       <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-7">
@@ -73,14 +95,27 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
             initialTrackingStatus={existingApplication?.status ?? null}
             initialFolder={docs.length > 0 ? offreFolderPath(offre.id, offre.company, offre.title) : null}
           />
+          {siblings.length > 0 && <SiblingsPanel siblings={siblings} />}
+          <section aria-label="Votre avis" className="glass-panel p-5">
+            <OfferFeedbackControl offerId={offre.id} initial={getFeedback(offre.id)} />
+          </section>
           {offre.score_breakdown && (
             <section aria-labelledby="score-title" className="glass-panel p-5">
               <h2 id="score-title" className="text-h3">Pourquoi ce score ?</h2>
               <p className="mt-1 text-small text-textSecondary">Comparaison de l'offre avec votre profil.</p>
+              {offre.score_breakdown.excluded && (
+                <p className="mt-4 rounded-lg border border-border bg-surface px-3 py-2 text-small">
+                  <span className="font-semibold">Hors critères</span> — {offre.score_breakdown.excluded}.
+                </p>
+              )}
               <div className="mt-5 space-y-4">
-                <ScoreBar label="Secteur" value={offre.score_breakdown.sector} />
+                {offre.score_breakdown.title != null && <ScoreBar label="Intitulé" value={offre.score_breakdown.title} />}
                 <ScoreBar label="Compétences" value={offre.score_breakdown.skills} />
+                {offre.score_breakdown.seniority != null && <ScoreBar label="Expérience" value={offre.score_breakdown.seniority} />}
+                {/* Les notes calculées avant l'intitulé appelaient ce critère « Secteur ». */}
+                <ScoreBar label={offre.score_breakdown.title != null ? "Mots-clés" : "Secteur"} value={offre.score_breakdown.sector} />
                 <ScoreBar label="Pays" value={offre.score_breakdown.country} />
+                {offre.score_breakdown.location != null && <ScoreBar label="Lieu" value={offre.score_breakdown.location} />}
                 {offre.score_breakdown.language != null && <ScoreBar label="Langue" value={offre.score_breakdown.language} />}
                 {offre.score_breakdown.contract != null && <ScoreBar label="Contrat" value={offre.score_breakdown.contract} />}
                 {offre.score_breakdown.duration != null && offre.score_breakdown.duration > 0 && <ScoreBar label="Durée V.I.E" value={offre.score_breakdown.duration} />}
@@ -88,6 +123,7 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
               {offre.score_breakdown.reason && <p className="mt-5 border-t border-border pt-4 text-small text-textSecondary">{offre.score_breakdown.reason}</p>}
             </section>
           )}
+          {offre.ai_review && offre.score_breakdown?.ai_verdict && <AiReviewPanel review={offre.ai_review} outOfZone={offre.score_breakdown?.location === 20} />}
         </aside>
 
         <article className="order-2 min-w-0 xl:order-1">
@@ -100,14 +136,47 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
           {offre.description_status === "failed" ? (
             <div className="glass-panel flex items-start gap-3 p-5">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
-              <div><p className="font-semibold">Description indisponible</p><p className="mt-1 text-small text-textSecondary">Consultez l'annonce d'origine ou relancez un scan pour essayer de la récupérer.</p></div>
+              {offre.quality_issues?.some((i) => i === "description_sans_rapport" || i === "page_de_resultats") ? (
+                <div><p className="font-semibold">Description erronée</p><p className="mt-1 text-small text-textSecondary">Le texte récupéré {offre.quality_issues.includes("page_de_resultats") ? "est celui d'une page de résultats" : "ne parle pas de ce poste"} : il n'est ni affiché, ni pris en compte dans la note. Consultez l'annonce d'origine.</p></div>
+              ) : (
+                <div><p className="font-semibold">Description indisponible</p><p className="mt-1 text-small text-textSecondary">Consultez l'annonce d'origine ou relancez un scan pour essayer de la récupérer.</p></div>
+              )}
             </div>
           ) : (
-            <div className="glass-panel p-5 sm:p-7"><DescriptionRenderer html={offre.description_html} /></div>
+            <>
+              {offre.description_status === "partial" && (
+                <p className="mb-3 text-small text-textSecondary">Seul un extrait de l&apos;annonce a été récupéré : la note s&apos;appuie sur peu d&apos;éléments. L&apos;annonce d&apos;origine dit tout.</p>
+              )}
+              <div className="glass-panel p-5 sm:p-7"><DescriptionRenderer html={offre.description_html} /></div>
+            </>
           )}
         </article>
       </div>
     </div>
+  );
+}
+
+/** Mêmes entreprise et intitulé ailleurs : autres lieux, autres sources (lib/scan/dedupe.ts). */
+function SiblingsPanel({ siblings }: { siblings: OffreSibling[] }) {
+  return (
+    <section aria-labelledby="siblings-title" className="glass-panel p-5">
+      <h2 id="siblings-title" className="flex items-center gap-2 text-h3"><Copy className="h-4 w-4 text-textSecondary" /> Aussi publiée ailleurs</h2>
+      <p className="mt-1 text-small text-textSecondary">Même entreprise, même intitulé : regroupées en une seule offre dans la liste.</p>
+      <ul className="mt-4 space-y-2">
+        {siblings.map((s) => (
+          <li key={s.id}>
+            <Link href={`/offres/${s.id}`} className="flex items-baseline justify-between gap-3 text-small hover:text-accent">
+              <span className="min-w-0">
+                <span className="font-medium">{s.location || "Lieu non précisé"}</span>
+                <span className="text-textSecondary"> · {SOURCES_META.find((m) => m.id === s.source)?.label ?? s.source}</span>
+                {s.closed_at && <span className="text-textSecondary"> · retirée</span>}
+              </span>
+              <span className="shrink-0 tabular-nums text-textSecondary">{s.score ?? 0}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -117,5 +186,51 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
       <div className="mb-1.5 flex justify-between gap-3 text-small"><span className="text-textSecondary">{label}</span><span className="font-semibold tabular-nums">{Math.round(value)}</span></div>
       <div className="h-1.5 overflow-hidden rounded-full bg-surfaceHover"><div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></div>
     </div>
+  );
+}
+
+const VERDICT_LABEL: Record<string, string> = {
+  postuler: "Vous pouvez postuler",
+  a_tenter: "À tenter",
+  hors_profil: "Hors de votre profil",
+};
+const KIND_LABEL: Record<string, string> = { diplome: "diplôme", experience: "expérience", langue: "langue", administratif: "condition administrative" };
+const COVERAGE_MARK: Record<string, { mark: string; label: string; className: string }> = {
+  oui: { mark: "✓", label: "couvert", className: "text-success" },
+  partiel: { mark: "≈", label: "partiellement couvert", className: "text-textSecondary" },
+  non: { mark: "✗", label: "non couvert", className: "text-danger" },
+};
+
+/** Exigences indispensables relevées par l'IA, et ce que le profil en couvre. */
+function AiReviewPanel({ review, outOfZone }: { review: NonNullable<OffreFiltered["ai_review"]>; outOfZone: boolean }) {
+  return (
+    <section aria-labelledby="ai-review-title" className="glass-panel p-5">
+      <h2 id="ai-review-title" className="text-h3">Relecture par l&apos;IA</h2>
+      <p className="mt-1 text-small text-textSecondary">
+        {VERDICT_LABEL[effectiveVerdict(review)] ?? review.verdict}
+        {outOfZone && effectiveVerdict(review) === "postuler" && " — mais l'offre est hors de votre zone"} · {review.skills_fit} % des compétences indispensables couvertes
+      </p>
+      {review.must_haves.length > 0 && (
+        <ul className="mt-4 space-y-2">
+          {review.must_haves.map((m) => {
+            const c = COVERAGE_MARK[m.covered];
+            return (
+              <li key={m.requirement} className="flex items-start gap-2 text-small">
+                <span aria-hidden="true" className={`w-4 shrink-0 font-semibold ${c.className}`}>{c.mark}</span>
+                <span>
+                  {m.requirement}
+                  {/* Diplômes, années, langues, conditions administratives : affichés, hors du taux de compétences couvertes. */}
+                  {m.kind && m.kind !== "competence" && <span className="text-textSecondary"> · {KIND_LABEL[m.kind]}</span>}
+                  {m.verified === false && <span className="text-textSecondary"> · déduite, ne compte pas</span>}
+                  <span className="sr-only"> : {c.label}</span>
+                  {m.verified && m.citation && <span className="mt-0.5 block text-caption text-textSecondary">« {m.citation} »</span>}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {reviewReason(review) && <p className="mt-4 border-t border-border pt-4 text-small text-textSecondary">{reviewReason(review)}</p>}
+    </section>
   );
 }

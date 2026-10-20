@@ -1,5 +1,6 @@
 import "server-only";
 import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./base";
+import { sourceFetch } from "./base";
 import { detectVie } from "@/lib/vie";
 import { parseDocument, firstMatchHtml, largestTextBlockHtml, sleep } from "./dom";
 
@@ -79,7 +80,7 @@ async function searchPage(keywords: string, start: number, size: number): Promis
     activeFiltre: true,
     typeClient: "CADRE",
   };
-  const res = await fetch(SEARCH_URL, {
+  const res = await sourceFetch(SEARCH_URL, {
     method: "POST",
     headers: API_HEADERS,
     body: JSON.stringify(body),
@@ -91,7 +92,7 @@ async function searchPage(keywords: string, start: number, size: number): Promis
 
 async function fetchDetailHtml(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url, { headers: DETAIL_HEADERS });
+    const res = await sourceFetch(url, { headers: DETAIL_HEADERS });
     if (!res.ok) return null;
     const doc = parseDocument(await res.text());
     return firstMatchHtml(doc, DETAIL_SELECTORS, 300) ?? largestTextBlockHtml(doc, 300);
@@ -162,7 +163,7 @@ export const apecScraper: Scraper = {
     }
 
     const max = criteria.maxOffres ?? 60;
-    const queries = criteria.sectors.length ? criteria.sectors : [""];
+    const queries = criteria.queries.length ? criteria.queries : [""];
     const seen = new Map<string, ApecJob>();
 
     for (const q of queries) {

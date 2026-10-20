@@ -162,7 +162,7 @@ export async function generateCV(
       ? [...new Set([...profile.skills.map((s) => s.name), ...profile.experiences.flatMap((e) => e.skills_used ?? [])].filter(Boolean))]
       : [];
   const vocabPromise = vocab.length ? translateToEnglish(vocab, "profile-skills") : null;
-  // Levier cache (même motif que score-offre.ts) : le profil vit dans un
+  // Levier cache (même motif que review-offres.ts) : le profil vit dans un
   // 2ᵉ bloc system avec cache_control sur LES DEUX blocs — en mode pack, le
   // préfixe tools+prompt est partagé entre tous les utilisateurs via la clé
   // unique du proxy, et le profil est réutilisé d'une offre à l'autre pendant
@@ -277,5 +277,6 @@ function stripIds(p: ProfileFull) {
       anchored: s.evidence_experience_ids.length > 0,
     })),
     languages: p.languages,
+    certifications: (p.certifications ?? []).map((c) => ({ name: c.name, date: c.date ?? null })),
   };
 }

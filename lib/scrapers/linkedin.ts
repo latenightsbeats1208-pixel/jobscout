@@ -2,7 +2,8 @@ import "server-only";
 import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./base";
 import { htmlToText, newContext } from "./base";
 import { detectVie } from "@/lib/vie";
-import { normalizeCountryName, strictCountryName } from "@/lib/countries";
+import { countryNameEnglish, normalizeCountryName, strictCountryName } from "@/lib/countries";
+import { searchAreaCity, type SearchArea } from "@/lib/geo/fr";
 
 const SOURCE = "linkedin";
 
@@ -13,7 +14,24 @@ type ListingCard = {
   company: string;
   location: string | null;
   posted_at: string | null;
+  /** Pays de la recherche qui a trouvé l'offre (paramètre location). */
+  searchCountry?: string | null;
 };
+
+/**
+ * Lieux de recherche pour un pays : en France avec une zone, d'abord la ville qui
+ * la représente (LinkedIn y cherche dans un rayon), puis tout le pays. Sans la
+ * première, une offre marseillaise se noyait parmi les parisiennes : 37 offres
+ * LinkedIn pour un UX designer des Bouches-du-Rhône, aucune dans la zone (banc
+ * marché, octobre 2026).
+ */
+export function linkedinLocations(country: string, area: SearchArea | null | undefined): string[] {
+  const city = area && country === "France" ? searchAreaCity(area) : null;
+  // LinkedIn ne comprend que les noms anglais : « Allemagne » ramenait 19 offres
+  // des États-Unis sur 75 (audit d'octobre 2026), « Germany » des offres allemandes.
+  const name = countryNameEnglish(country) ?? country;
+  return city ? [city, name] : [name];
+}
 
 export const linkedinScraper: Scraper = {
   name: SOURCE,
@@ -31,33 +49,35 @@ export const linkedinScraper: Scraper = {
       // 2 pages max par combinaison secteur×pays : avec une liste de pays large
       // (ex. francophonie), on couvre chaque pays au lieu d'épuiser le budget
       // sur la première combinaison.
-      for (const sector of criteria.sectors.length ? criteria.sectors : [""]) {
+      for (const sector of criteria.queries.length ? criteria.queries : [""]) {
         for (const country of countries) {
-          if (cards.length >= max) break;
-          let start = 0;
-          for (let p = 0; p < 2 && cards.length < max; p++) {
-            const url = `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=${encodeURIComponent(
-              sector
-            )}&location=${encodeURIComponent(country)}&start=${start}`;
-            let pageCards: ListingCard[] = [];
-            try {
-              await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-              await page.waitForTimeout(400);
-              pageCards = await extractListingCards(page);
-            } catch {
-              break;
+          for (const location of linkedinLocations(country, criteria.area)) {
+            if (cards.length >= max) break;
+            let start = 0;
+            for (let p = 0; p < 2 && cards.length < max; p++) {
+              const url = `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=${encodeURIComponent(
+                sector
+              )}&location=${encodeURIComponent(location)}&start=${start}`;
+              let pageCards: ListingCard[] = [];
+              try {
+                await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+                await page.waitForTimeout(400);
+                pageCards = (await extractListingCards(page)).map((c) => ({ ...c, searchCountry: country || null }));
+              } catch {
+                break;
+              }
+              if (!pageCards.length) break;
+              let added = 0;
+              for (const c of pageCards) {
+                if (seen.has(c.jobId)) continue;
+                seen.add(c.jobId);
+                cards.push(c);
+                added++;
+                if (cards.length >= max) break;
+              }
+              if (added === 0) break;
+              start += 25;
             }
-            if (!pageCards.length) break;
-            let added = 0;
-            for (const c of pageCards) {
-              if (seen.has(c.jobId)) continue;
-              seen.add(c.jobId);
-              cards.push(c);
-              added++;
-              if (cards.length >= max) break;
-            }
-            if (added === 0) break;
-            start += 25;
           }
         }
       }
@@ -276,12 +296,7 @@ async function fetchDetail(page: any, card: ListingCard): Promise<ScrapedOffre> 
         data.ld?.jobLocation?.address?.addressLocality ||
         card.location ||
         null;
-      // Pays : JSON-LD quand il existe, sinon déduit du libellé de lieu
-      // (« Paris, Île-de-France, France » → « France »). Sans cela, 100 % des
-      // offres LinkedIn restaient sans pays et perdaient 10 points de score.
-      const country =
-        normalizeCountryName(data.ld?.jobLocation?.address?.addressCountry || null) ??
-        inferCountryFromLocation(location);
+      const country = linkedinCountry(data.ld?.jobLocation?.address?.addressCountry, location, card.searchCountry);
       const contract_type =
         data.criteria["Type d'emploi"] ||
         data.criteria["Employment type"] ||
@@ -319,7 +334,7 @@ async function fetchDetail(page: any, card: ListingCard): Promise<ScrapedOffre> 
     url: card.url,
     title: card.title || "Description non récupérée",
     company: card.company || "",
-    country: inferCountryFromLocation(card.location),
+    country: linkedinCountry(null, card.location, card.searchCountry),
     location: card.location,
     contract_type: null,
     salary: null,
@@ -333,10 +348,28 @@ async function fetchDetail(page: any, card: ListingCard): Promise<ScrapedOffre> 
   };
 }
 
+/**
+ * Pays d'une offre : JSON-LD quand il existe, sinon le libellé de lieu (« Paris,
+ * Île-de-France, France » → « France »), sinon le pays de la recherche qui l'a
+ * trouvée. LinkedIn n'écrit que la ville quand la recherche porte déjà sur un
+ * pays (« Lyon », « Ville de Paris ») : 62 offres sur 160 restaient sans pays
+ * (octobre 2026), donc hors du filtre par pays et des doublons entre sources.
+ */
+export function linkedinCountry(
+  ldCountry: string | null | undefined,
+  location: string | null | undefined,
+  searchCountry: string | null | undefined
+): string | null {
+  return normalizeCountryName(ldCountry || null) ?? inferCountryFromLocation(location) ?? strictCountryName(searchCountry);
+}
+
 /** « Paris, Île-de-France, France » → « France » ; « Montréal, QC, Canada » → « Canada ». */
 function inferCountryFromLocation(location: string | null | undefined): string | null {
   if (!location) return null;
-  const parts = location.split(",").map((x) => x.trim()).filter(Boolean);
+  // Deux lettres après une virgule, c'est un État américain ou une province
+  // canadienne (« Wilmington, DE », « Los Angeles, CA ») : jamais l'Allemagne
+  // ni le Canada. LinkedIn écrit les pays en toutes lettres.
+  const parts = location.split(",").map((x) => x.trim()).filter((x) => x.length > 2);
   // Strict : « Lyon » ou « Bruxelles et périphérie » ne doivent jamais devenir un pays.
   for (let i = parts.length - 1; i >= 0; i--) {
     const c = strictCountryName(parts[i]);

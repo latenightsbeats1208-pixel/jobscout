@@ -308,7 +308,7 @@ button, select, summary { cursor: pointer; }
   .offer-row { transition: background 180ms, border-color 180ms; }
   .offer-row:hover { background: var(--accent-soft); }
   .offer-row[aria-current="true"] { background: var(--accent-soft); border-left-color: var(--accent); }
-  /* Pastille de score. Bleu par défaut ; `data-tone` (voir scoreColor dans
+  /* Pastille de score. Bleu par défaut ; `data-tone` (voir scoreDisplay dans
      lib/utils.ts) garde le code couleur : excellent / bon / moyen / faible.
      Texte = encre du ton, fond = ton vif de 12 % à 3,5 % : ≥ 4,5:1 partout. */
   .score-badge {

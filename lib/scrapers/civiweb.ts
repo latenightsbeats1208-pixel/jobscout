@@ -1,5 +1,6 @@
 import "server-only";
 import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./base";
+import { sourceFetch } from "./base";
 import { detectVie } from "@/lib/vie";
 import { normalizeCountryName } from "@/lib/countries";
 
@@ -176,7 +177,7 @@ function offerToScraped(o: CiviwebOffer): ScrapedOffre {
 }
 
 async function fetchPage(skip: number, limit: number): Promise<CiviwebOffer[]> {
-  const res = await fetch(`${API_BASE}/api/Offers/search`, {
+  const res = await sourceFetch(`${API_BASE}/api/Offers/search`, {
     method: "POST",
     headers: HEADERS,
     body: JSON.stringify({ skip, limit }),

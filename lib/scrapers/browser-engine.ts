@@ -44,7 +44,34 @@ function defaultRegistryDir(): string {
   return path.join(envPath("XDG_CACHE_HOME") || homePath(".cache"), "ms-playwright");
 }
 
+/**
+ * Dossiers du shell Chromium que CETTE version de Playwright sait lancer, lus
+ * dans son browsers.json (révision principale et variantes par système). Un
+ * moteur d'une autre révision ne compte pas : le registre global d'un poste
+ * peut en garder d'une autre version de Playwright, que le lancement refuse
+ * (« Executable doesn't exist at …/chromium_headless_shell-1217 », mesuré en
+ * octobre 2026 avec les révisions 1234 et 1243 présentes). null si le fichier
+ * est illisible.
+ */
+function expectedShellDirs(): string[] | null {
+  try {
+    const file = path.join(process.cwd(), "node_modules", "playwright-core", "browsers.json");
+    const data = JSON.parse(fs.readFileSync(file, "utf-8")) as {
+      browsers?: { name?: string; revision?: string; revisionOverrides?: Record<string, string> }[];
+    };
+    const shell = data.browsers?.find((b) => b.name === "chromium-headless-shell");
+    if (!shell?.revision) return null;
+    const revisions = new Set([shell.revision, ...Object.values(shell.revisionOverrides ?? {})]);
+    return [...revisions].map((r) => `chromium_headless_shell-${r}`);
+  } catch {
+    return null;
+  }
+}
+
 function hasCompleteChromium(dir: string): boolean {
+  const expected = expectedShellDirs();
+  if (expected) return expected.some((name) => fs.existsSync(path.join(dir, name, "INSTALLATION_COMPLETE")));
+  // browsers.json illisible : toute révision, faute de mieux.
   let entries: string[];
   try {
     entries = fs.readdirSync(dir);
@@ -58,7 +85,7 @@ function hasCompleteChromium(dir: string): boolean {
 
 /**
  * Répertoire de navigateurs effectif : celui de l'application s'il contient
- * un moteur, sinon le registre Playwright global s'il en a un (cas du poste
+ * le moteur attendu, sinon le registre Playwright global s'il l'a (cas du poste
  * de développement, où `data/browsers` est vide alors que Chromium est déjà
  * installé pour l'application installée) — sinon celui de l'application,
  * où l'installation à la demande écrira.
@@ -81,8 +108,8 @@ function playwrightCliPath(): string | null {
 }
 
 /**
- * Le moteur est-il déjà installé ? On cherche un dossier `chromium*` marqué
- * INSTALLATION_COMPLETE par Playwright — indépendant du numéro de révision.
+ * Le moteur est-il déjà installé ? On cherche le shell Chromium de la révision
+ * attendue par Playwright, marqué INSTALLATION_COMPLETE.
  */
 export function isEngineInstalled(): boolean {
   return hasCompleteChromium(resolveBrowsersDir());

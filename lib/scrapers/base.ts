@@ -1,3 +1,5 @@
+import type { SearchArea } from "@/lib/geo/fr";
+import { decodeHtmlEntities } from "@/lib/text/entities";
 import "server-only";
 import type { Browser, BrowserContext } from "playwright";
 import {
@@ -22,11 +24,18 @@ export type ScrapedOffre = {
   is_vie: boolean;
   raw_payload: Record<string, unknown>;
   scrape_errors?: string;
+  /** Rempli par le contrôle de qualité du scan, pas par les collecteurs. */
+  quality_issues?: string[];
 };
 
 export type ScrapeCriteria = {
+  /** Requêtes envoyées aux sources : les postes visés (voir lib/scan/search-plan.ts). */
+  queries: string[];
+  /** Secteurs du profil : Civiweb s'en sert comme filtre ; les autres sources cherchent `queries`. */
   sectors: string[];
   countries: string[];
+  /** Zone de recherche en France ; null = tout le pays. Appliquée par les sources qui la vérifient. */
+  area?: SearchArea | null;
   maxOffres?: number;
 };
 
@@ -51,7 +60,13 @@ export async function getBrowser(): Promise<Browser> {
   applyBrowsersPath();
   if (!isEngineInstalled()) throw new Error(ENGINE_MISSING_MESSAGE);
   const { chromium } = await import("playwright");
-  _browser = await chromium.launch({ headless: true });
+  try {
+    _browser = await chromium.launch({ headless: true });
+  } catch (e) {
+    // Moteur d'une autre version de Playwright : même remède qu'un moteur absent.
+    if (e instanceof Error && /Executable doesn't exist/i.test(e.message)) throw new Error(ENGINE_MISSING_MESSAGE);
+    throw e;
+  }
   return _browser;
 }
 
@@ -65,19 +80,28 @@ export async function newContext(): Promise<BrowserContext> {
   });
 }
 
+/**
+ * Délai d'une requête vers un site d'offres. Sans lui, un site qui garde la
+ * connexion ouverte sans répondre faisait attendre chaque requête jusqu'à
+ * 5 minutes : des recherches de test du 19 octobre 2026 sont restées bloquées
+ * une heure sur France Travail, HelloWork ou Welcome to the Jungle.
+ */
+export const SOURCE_TIMEOUT_MS = 20_000;
+
+/** fetch vers un site d'offres, abandonné après SOURCE_TIMEOUT_MS (lecture du corps comprise). */
+export function sourceFetch(input: string | URL, init: RequestInit = {}): Promise<Response> {
+  return fetch(input, { ...init, signal: init.signal ?? AbortSignal.timeout(SOURCE_TIMEOUT_MS) });
+}
+
 export function htmlToText(html: string): string {
-  return html
+  const text = html
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    .replace(/<[^>]+>/g, "");
+  // Toutes les entités, numériques et doublement encodées comprises (« 6&#xa0;ans », « Bac &#43;5 »).
+  return decodeHtmlEntities(text)
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();

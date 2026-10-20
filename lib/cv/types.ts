@@ -41,6 +41,21 @@ export const LanguageSchema = z.object({
 });
 export type Language = z.infer<typeof LanguageSchema>;
 
+/**
+ * Certification, habilitation, carte ou titre professionnel : SSIAP, carte
+ * CNAPS, CACES, permis C, SST, formation Bobath, APICS CSCP… Ce sont souvent
+ * des conditions d'accès au poste. Avant, l'extraction les relevait, mais le
+ * profil n'avait pas de place pour elles : elles finissaient dans les
+ * compétences ou nulle part (audit d'octobre 2026).
+ */
+export const CertificationSchema = z.object({
+  id: z.number().optional(),
+  name: z.string().min(1),
+  issuer: z.string().nullable().optional(),
+  date: z.string().nullable().optional(),
+});
+export type Certification = z.infer<typeof CertificationSchema>;
+
 export const ProfileSchema = z.object({
   id: z.number().optional(),
   full_name: z.string().nullable().optional(),
@@ -52,11 +67,21 @@ export const ProfileSchema = z.object({
   summary: z.string().nullable().optional(),
   raw_cv_text: z.string().nullable().optional(),
   sectors: z.array(z.string()).default([]),
+  /** Postes visés (« Business Analyst », « Data Engineer »…) : la note compare l'intitulé de chaque offre à cette liste. */
+  target_titles: z.array(z.string()).default([]),
   target_countries: z.array(z.string()).default([]),
+  /** Zone de recherche en France : « » (tout le pays), « R:84 » (région) ou « D:69 » (département). Voir lib/geo/fr.ts. */
+  search_area: z.string().default(""),
   sources_enabled: z.array(z.string()).default([]),
   preferred_contracts: z
-    .array(z.enum(["cdi", "cdd", "vie", "stage", "alternance"]))
+    .array(z.enum(["cdi", "cdd", "interim", "vie", "stage", "alternance", "freelance"]))
     .default(["cdi", "cdd"]),
+  /**
+   * Télétravail : « full » = complet recherché, « » = indifférent. Un développeur
+   * qui cherchait « une mission freelance ou un CDI full remote » était rangé
+   * d'office en CDI ou CDD, sans rien pour dire le télétravail (audit d'octobre 2026).
+   */
+  remote: z.enum(["", "full"]).optional(),
   extraction_confidence: z.number().min(0).max(100).default(0),
   created_at: z.string().optional(),
   updated_at: z.string().optional(),
@@ -68,6 +93,8 @@ export const ProfileFullSchema = ProfileSchema.extend({
   educations: z.array(EducationSchema).default([]),
   skills: z.array(SkillSchema).default([]),
   languages: z.array(LanguageSchema).default([]),
+  /** Facultatif : un profil enregistré avant cette liste, ou un ancien instantané, n'en a pas. */
+  certifications: z.array(CertificationSchema).optional(),
 });
 export type ProfileFull = z.infer<typeof ProfileFullSchema>;
 
@@ -82,6 +109,8 @@ export const ExtractedCVSchema = z.object({
     portfolio_url: z.string().nullable(),
   }),
   summary: z.string().nullable(),
+  /** Intitulés de poste que le CV met en avant (titre du CV, poste actuel), formulés comme des intitulés d'offres. */
+  target_titles: z.array(z.string()).default([]),
   experiences: z.array(
     z.object({
       title: z.string(),
@@ -116,5 +145,15 @@ export const ExtractedCVSchema = z.object({
   certifications: z
     .array(z.object({ name: z.string(), issuer: z.string().nullable(), date: z.string().nullable() }))
     .default([]),
+  /** Ce que le CV dit de la recherche (« en Alsace ou côté allemand, CDI ») : de quoi pré-remplir l'inscription. */
+  search_preferences: z
+    .object({
+      zone: z.string().nullable().default(null),
+      countries: z.array(z.string()).default([]),
+      contracts: z.array(z.string()).default([]),
+      remote: z.boolean().nullable().default(null),
+    })
+    .nullable()
+    .optional(),
 });
 export type ExtractedCV = z.infer<typeof ExtractedCVSchema>;

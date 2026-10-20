@@ -8,15 +8,18 @@ import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import { Spinner } from "@/components/ui/spinner";
 import type { ProfileFull } from "@/lib/cv/types";
+import { SearchAreaSelect } from "@/components/app/search-area";
 import { COUNTRY_GROUPS, FRANCOPHONIE } from "@/lib/countries";
 import { SOURCES_META, DEFAULT_SOURCE_IDS } from "@/lib/sources-meta";
 import { EngineNotice } from "@/components/app/engine-notice";
+import { TitleSuggestions } from "@/components/app/title-suggestions";
 const SOURCES = SOURCES_META;
 
 export function PreferencesForm() {
   const router = useRouter();
   const [profile, setProfile] = useState<ProfileFull | null>(null);
   const [sectorInput, setSectorInput] = useState("");
+  const [titleInput, setTitleInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,6 +32,7 @@ export function PreferencesForm() {
     const p: ProfileFull = JSON.parse(raw);
     if (!p.sources_enabled?.length) p.sources_enabled = [...DEFAULT_SOURCE_IDS];
     if (!p.preferred_contracts?.length) p.preferred_contracts = ["cdi", "cdd"];
+    if (!p.target_titles?.length) p.target_titles = suggestTargetTitles(p);
     setProfile(p);
   }, [router]);
 
@@ -53,6 +57,13 @@ export function PreferencesForm() {
     });
   };
 
+  const addTitle = () => {
+    const v = titleInput.trim();
+    if (!v || profile.target_titles.includes(v)) return setTitleInput("");
+    update({ target_titles: [...profile.target_titles, v] });
+    setTitleInput("");
+  };
+
   const addSector = () => {
     const v = sectorInput.trim();
     if (!v) return;
@@ -63,10 +74,9 @@ export function PreferencesForm() {
 
   async function save() {
     if (!profile) return;
-    if (profile.sectors.length === 0) {
-      setError("Ajoutez au moins un secteur cible.");
-      return;
-    }
+    // Le secteur n'est plus obligatoire : l'extraction ne le remplit jamais (0 CV
+    // sur 8 dans l'audit d'octobre 2026), il ne pèse que 10 % de la note, et les
+    // sources cherchent les postes visés, pas les secteurs.
     if (profile.target_countries.length === 0) {
       setError("Sélectionnez au moins un pays.");
       return;
@@ -99,9 +109,48 @@ export function PreferencesForm() {
   return (
     <div className="space-y-5">
       <Card>
-        <h2 className="text-h3 mb-1">Secteurs cibles</h2>
+        <h2 className="text-h3 mb-1">Postes visés</h2>
         <p className="text-small text-textSecondary mb-4">
-          Mots-clés des secteurs / branches qui vous intéressent.
+          Les intitulés que vous recherchez. Chaque offre est notée d'abord sur la proximité de son titre avec cette liste.
+        </p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {profile.target_titles.map((t) => (
+            <Chip
+              key={t}
+              active
+              onRemove={() => update({ target_titles: profile.target_titles.filter((x) => x !== t) })}
+            >
+              {t}
+            </Chip>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <Input
+            value={titleInput}
+            onChange={(e) => setTitleInput(e.target.value)}
+            placeholder="Ex. Business Analyst, Développeur .NET, Technicien de maintenance…"
+            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTitle())}
+          />
+          <Button variant="secondary" onClick={addTitle}>
+            <Plus className="h-4 w-4" /> Ajouter
+          </Button>
+        </div>
+        <TitleSuggestions
+          profile={profile}
+          current={profile.target_titles}
+          onAdd={(title) => update({ target_titles: [...profile.target_titles, title] })}
+        />
+      </Card>
+
+      <Card>
+        <h2 className="text-h3 mb-3">Où chercher</h2>
+        <SearchAreaSelect value={profile.search_area ?? ""} onChange={(search_area) => update({ search_area })} />
+      </Card>
+
+      <Card>
+        <h2 className="text-h3 mb-1">Secteurs cibles <span className="text-small font-normal text-textSecondary">· facultatif</span></h2>
+        <p className="text-small text-textSecondary mb-4">
+          Mots-clés des secteurs / branches qui vous intéressent. Ils départagent les offres sans changer ce qui est cherché.
         </p>
         <div className="flex flex-wrap gap-2 mb-3">
           {profile.sectors.map((s) => (
@@ -137,9 +186,11 @@ export function PreferencesForm() {
             [
               ["cdi", "CDI"],
               ["cdd", "CDD"],
+              ["interim", "Intérim"],
               ["vie", "V.I.E"],
               ["stage", "Stage"],
               ["alternance", "Alternance"],
+              ["freelance", "Freelance / mission"],
             ] as const
           ).map(([id, label]) => (
             <Chip
@@ -157,6 +208,14 @@ export function PreferencesForm() {
               {label}
             </Chip>
           ))}
+        </div>
+        <div className="mt-4">
+          <Chip active={profile.remote === "full"} onClick={() => update({ remote: profile.remote === "full" ? "" : "full" })}>
+            Télétravail complet recherché
+          </Chip>
+          <p className="mt-2 text-caption text-textSecondary">
+            Les offres en télétravail complet passent alors devant ; les postes sur site loin de votre zone restent en retrait.
+          </p>
         </div>
       </Card>
 
@@ -274,4 +333,10 @@ export function PreferencesForm() {
       </div>
     </div>
   );
+}
+
+/** Sans poste visé extrait du CV : le poste le plus récent, hors stage et alternance. */
+function suggestTargetTitles(p: ProfileFull): string[] {
+  const recent = p.experiences.find((e) => e.title && !/stag|intern|altern|apprenti/i.test(e.title));
+  return recent ? [recent.title] : [];
 }

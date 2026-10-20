@@ -12,9 +12,12 @@ CREATE TABLE IF NOT EXISTS profile (
   summary TEXT,
   raw_cv_text TEXT,
   sectors TEXT NOT NULL DEFAULT '[]',
+  target_titles TEXT NOT NULL DEFAULT '[]',
   target_countries TEXT NOT NULL DEFAULT '[]',
+  search_area TEXT NOT NULL DEFAULT '',
   sources_enabled TEXT NOT NULL DEFAULT '[]',
   preferred_contracts TEXT NOT NULL DEFAULT '["cdi","cdd"]',
+  remote TEXT NOT NULL DEFAULT '',
   extraction_confidence INTEGER DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -67,6 +70,15 @@ CREATE TABLE IF NOT EXISTS languages (
   FOREIGN KEY (profile_id) REFERENCES profile(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS certifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  profile_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  issuer TEXT,
+  date TEXT,
+  FOREIGN KEY (profile_id) REFERENCES profile(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS offres (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source TEXT NOT NULL,
@@ -88,6 +100,19 @@ CREATE TABLE IF NOT EXISTS offres (
   is_vie INTEGER NOT NULL DEFAULT 0,
   raw_payload TEXT,
   scrape_errors TEXT,
+  ai_review TEXT,
+  -- Problèmes relevés par le contrôle de qualité (lib/scrapers/quality.ts), en JSON.
+  quality_issues TEXT,
+  -- Première collecte (scraped_at est la dernière) : seul repère de fraîcheur
+  -- pour une offre sans date de publication.
+  first_seen_at TEXT,
+  -- Offre constatée retirée par sa source (lib/scrapers/liveness.ts), et date
+  -- de la dernière vérification.
+  closed_at TEXT,
+  checked_at TEXT,
+  -- Même offre publiée ailleurs (autre lieu, autre source) : id de l'offre qui
+  -- représente le groupe dans la liste (lib/scan/dedupe.ts). NULL = affichée.
+  duplicate_of INTEGER,
   UNIQUE(source, source_id)
 );
 
@@ -130,6 +155,19 @@ CREATE TABLE IF NOT EXISTS candidatures (
   FOREIGN KEY (msg_doc_id) REFERENCES documents(id) ON DELETE SET NULL
 );
 
+-- Avis de l'utilisateur sur une offre (👍 / 👎) : mesure la justesse de la note.
+-- Une ligne par offre ; score_at garde la note affichée au moment de l'avis.
+CREATE TABLE IF NOT EXISTS offre_feedback (
+  offre_id INTEGER PRIMARY KEY,
+  verdict TEXT NOT NULL CHECK (verdict IN ('up', 'down')),
+  reason TEXT,
+  score_at INTEGER,
+  profile_hash TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (offre_id) REFERENCES offres(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT
@@ -140,5 +178,7 @@ CREATE TABLE IF NOT EXISTS scan_runs (
   started_at TEXT NOT NULL DEFAULT (datetime('now')),
   finished_at TEXT,
   status TEXT NOT NULL DEFAULT 'running',
-  log TEXT NOT NULL DEFAULT '[]'
+  log TEXT NOT NULL DEFAULT '[]',
+  -- Bilan en JSON : sources en échec et leur motif (statut « partial » ou « failed »).
+  summary TEXT
 );
