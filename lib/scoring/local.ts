@@ -147,6 +147,7 @@ type PreparedProfile = {
   skills: PreparedSkill[];
   keywords: { tokens: string[]; info: number }[];
   vocabulary: Set<string>;
+  tradeVocabulary: Set<string>;
   years: number | null;
   ranks: { min: Rank; max: Rank } | null;
   languages: Map<string, Mastery> | null;
@@ -200,6 +201,14 @@ function prepareProfile(profile: ProfileFull, corpus: Corpus): PreparedProfile {
     skills,
     keywords,
     vocabulary: new Set(tokenize(vocabularyText)),
+    // Ce que le profil affirme, sans le texte libre (voir tradeConflict).
+    tradeVocabulary: new Set(tokenize([
+      ...profile.skills.map((s) => s.name),
+      ...declared,
+      ...profile.experiences.flatMap((e) => [e.title, ...e.skills_used]),
+      ...profile.educations.flatMap((e) => [e.degree ?? "", e.field ?? ""]),
+      ...(profile.certifications ?? []).map((c) => c.name),
+    ].join("\n"))),
     years: profileExperienceYears(profile),
     ranks: profileRanks(declared),
     languages: profileLanguages(profile),
@@ -282,6 +291,52 @@ const STACK_FAMILY: Record<string, string> = {
   golang: "Go", scala: "Scala", swift: "Swift", cobol: "COBOL", rust: "Rust", "c++": "C++", abap: "ABAP",
 };
 const STACK_CONFLICT_FACTOR = 0.5;
+
+/**
+ * Corps de métier, comme les langages plus haut : « Conducteur de travaux CVC »
+ * ou « électricité » ne sont pas pour une conductrice de travaux de génie civil,
+ * « Formateur sécurité », « danse » ou « chaudronnerie » pas pour une enseignante
+ * qui se forme à l'ingénierie pédagogique. Le titre visé y est entier, et ces
+ * offres passaient devant les bonnes (recherches de test du 19 octobre 2026).
+ * Un métier du titre que rien ne cite dans les compétences, les intitulés, les
+ * diplômes ou les certifications du profil (le texte libre des expériences ne
+ * compte pas : une enseignante y parle de « sécurité » ou d'« informatique »).
+ * Titre × 0,35 : P@10 de 56 à 60 % et de 52 à 55 % sur les deux collectes de
+ * l'audit, 13 bonnes offres sur 20 au lieu de 9 pour la conductrice ; 16
+ * profils du banc marché inchangés. À 0,5, le gain était moitié moindre.
+ */
+const TRADE_WORDS: Record<string, string> = {
+  "électricité électricien électrique": "électricité",
+  "électronique électronicien": "électronique",
+  "cvc chauffage climatisation climatique ventilation frigoriste thermique": "génie climatique",
+  "plomberie plombier sanitaire": "plomberie",
+  "menuiserie menuisier ébéniste": "menuiserie",
+  "chaudronnerie chaudronnier soudure soudeur tuyauterie tuyauteur": "chaudronnerie",
+  "usinage usineur tourneur fraiseur": "usinage",
+  "informatique cybersécurité": "informatique",
+  "incendie ssiap": "sécurité incendie",
+  "infirmier infirmière soins aide-soignant": "soins",
+  "esthétique esthéticienne coiffure coiffeur": "esthétique",
+  "danse sport sportive": "sport",
+  "cuisine cuisinier pâtisserie boulangerie": "cuisine",
+  "maçonnerie maçon": "maçonnerie",
+  "couverture couvreur étanchéité bardage": "couverture",
+  "peinture peintre": "peinture",
+  "comptable comptabilité paie": "comptabilité",
+};
+const TRADE_FAMILY = new Map<string, string>(
+  Object.entries(TRADE_WORDS).flatMap(([words, family]) => tokenize(words).map((t) => [t, family] as [string, string]))
+);
+const TRADE_FACTOR = 0.35;
+
+/** Le titre nomme un corps de métier qu'aucun élément du profil ne cite : lequel. */
+function tradeConflict(p: PreparedProfile, o: PreparedOffer): string | null {
+  const offered = [...new Set(o.titleTokens.map((t) => TRADE_FAMILY.get(t)).filter((f): f is string => !!f))];
+  if (!offered.length) return null;
+  const known = new Set([...p.tradeVocabulary].map((t) => TRADE_FAMILY.get(t)).filter(Boolean));
+  const missing = offered.filter((f) => !known.has(f));
+  return missing.length === offered.length ? missing[0] : null;
+}
 
 /** Le titre nomme un langage que le profil ne pratique pas, alors qu'il en pratique un autre : lequel. */
 function stackConflict(p: PreparedProfile, o: PreparedOffer): string | null {
@@ -505,7 +560,8 @@ function scorePrepared(
   const review = shortAd ? null : rawReview;
   const rawTitle = scoreTitle(p, o, corpus);
   const otherStack = stackConflict(p, o);
-  const title = otherStack ? { ...rawTitle, score: Math.round(rawTitle.score * STACK_CONFLICT_FACTOR) } : rawTitle;
+  const otherTrade = tradeConflict(p, o);
+  const title = otherStack ? { ...rawTitle, score: Math.round(rawTitle.score * STACK_CONFLICT_FACTOR) } : otherTrade ? { ...rawTitle, score: Math.round(rawTitle.score * TRADE_FACTOR) } : rawTitle;
   const skills = scoreSkills(p, o, corpus);
   const keywords = scoreKeywords(p, o);
   const country = scoreCountry(profile.target_countries, offre.country);
@@ -581,6 +637,7 @@ function scorePrepared(
     }
   }
   if (otherStack) parts.push(`autre langage (${otherStack})`);
+  if (otherTrade) parts.push(`autre métier (${otherTrade})`);
   if (zone.fit === "hors") parts.push(`hors de votre zone (${zone.place})`);
   else if (zone.fit === "proche") parts.push(`près de votre zone (${zone.place})`);
   if (remote) parts.push("télétravail complet");
@@ -611,6 +668,7 @@ function scorePrepared(
     exclusions.length ? `hors critères : ${exclusions[0]}` : null,
     verdict && verdict !== "postuler" ? aiReason : null,
     otherStack ? `autre langage (${otherStack})` : null,
+    otherTrade ? `autre métier (${otherTrade})` : null,
     zone.fit === "hors" ? `hors de votre zone (${zone.place})` : zone.fit === "proche" ? `près de votre zone (${zone.place})` : null,
     contract.freelance && !wantsFreelance ? "freelance" : null,
     hierarchy.note,

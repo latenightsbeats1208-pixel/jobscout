@@ -178,3 +178,23 @@ describe("un intitulé d'offre en anglais", () => {
     expect(partner).toBe(0);
   });
 });
+
+describe("un autre corps de métier dans le titre", () => {
+  it("« Conducteur de travaux CVC » n'est pas pour une conductrice de génie civil ; il l'est pour qui connaît le métier", async () => {
+    const { scoreOffresLocal } = await import("@/lib/scoring/local");
+    const profile = (skills: string[]): ProfileFull => ({
+      sectors: [], target_titles: ["Conducteur de travaux"], target_countries: ["France"], search_area: "", sources_enabled: [], preferred_contracts: ["cdi"],
+      extraction_confidence: 0, educations: [], languages: [],
+      // Le texte libre ne compte pas : « chauffage » y est cité sans faire le métier.
+      experiences: [{ title: "Conductrice de travaux", description: "Chantiers d'ouvrages d'art, coordination avec le lot chauffage.", bullet_points: [], skills_used: [] }],
+      skills: skills.map((name) => ({ name, category: "technical", level: null, evidence_experience_ids: [] })),
+    });
+    const offer = (title: string) => ({ title, company: "X", country: "France", description_text: "Vous pilotez les chantiers et les sous-traitants." });
+    const offers = [offer("Conducteur de travaux H/F"), offer("Conducteur de travaux CVC H/F")];
+    const [plain, cvc] = scoreOffresLocal(profile(["Génie civil"]), offers);
+    expect(cvc.breakdown.title).toBeLessThan(plain.breakdown.title / 2);
+    expect(cvc.breakdown.minus).toBe("autre métier (génie climatique)");
+    const [, cvcForHvac] = scoreOffresLocal(profile(["Génie civil", "Chauffage, ventilation, climatisation"]), offers);
+    expect(cvcForHvac.breakdown.minus ?? "").not.toMatch(/autre métier/);
+  });
+});
