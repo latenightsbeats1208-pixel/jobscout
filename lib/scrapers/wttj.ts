@@ -1,7 +1,7 @@
 import { quotaPerQuery } from "@/lib/scan/search-plan";
 import "server-only";
 import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./base";
-import { htmlToText } from "./base";
+import { htmlToText, sourceFetch } from "./base";
 import { detectVie } from "@/lib/vie";
 import { normalizeCountryName, nameToCode } from "@/lib/countries";
 import { DEPARTEMENTS, type SearchArea } from "@/lib/geo/fr";
@@ -161,7 +161,7 @@ export function wttjAreaFilter(area: SearchArea, otherCountryCodes: string[], sc
 async function searchPage(query: string, page: number, filters?: string): Promise<{ hits: Hit[]; nbPages: number }> {
   const params = new URLSearchParams({ query, hitsPerPage: String(HITS_PER_PAGE), page: String(page) });
   if (filters) params.set("filters", filters);
-  const res = await fetch(ALGOLIA_URL, {
+  const res = await sourceFetch(ALGOLIA_URL, {
     method: "POST",
     headers: {
       "content-type": "application/json",

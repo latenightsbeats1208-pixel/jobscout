@@ -78,3 +78,25 @@ describe("scan de bout en bout", () => {
     expect(lines.find((l) => l.startsWith("[hellowork] contrôle qualité"))).toMatch(/1 × description qui ne parle pas du poste du titre/);
   });
 });
+
+describe("une source trop lente", () => {
+  it("est arrêtée au bout de son temps : ses offres lues restent, le scan est partiel", async () => {
+    const { runScan } = await import("@/lib/scan/orchestrator");
+    const lines: string[] = [];
+    let done: any = null;
+    for await (const e of runScan((l) => lines.push(l), { sourceBudgetMs: -1 })) if (e.kind === "global-done") done = e;
+    expect(lines).toContain("[hellowork] arrêtée après 0 s, site trop lent : 1 offre insérée");
+    expect(done.status).toBe("partial");
+    expect(done.failures).toEqual([{ source: "hellowork", message: "arrêtée après 0 s, site trop lent" }]);
+  });
+
+  it("chaque requête vers un site d'offres porte un délai d'abandon", async () => {
+    const { sourceFetch, SOURCE_TIMEOUT_MS } = await import("@/lib/scrapers/base");
+    let signal: AbortSignal | null | undefined;
+    vi.stubGlobal("fetch", async (_: unknown, init?: RequestInit) => ((signal = init?.signal), new Response("ok")));
+    await sourceFetch("https://example.org/");
+    vi.unstubAllGlobals();
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(SOURCE_TIMEOUT_MS).toBe(20_000);
+  });
+});

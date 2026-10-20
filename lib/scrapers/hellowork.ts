@@ -2,7 +2,7 @@ import type { SearchArea } from "@/lib/geo/fr";
 import { quotaPerQuery } from "@/lib/scan/search-plan";
 import "server-only";
 import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./base";
-import { htmlToText } from "./base";
+import { htmlToText, sourceFetch } from "./base";
 import { detectVie } from "@/lib/vie";
 import {
   parseDocument,
@@ -93,7 +93,7 @@ async function fetchSearchPage(keywords: string, page: number, area?: SearchArea
   // Le nom d'un département ou d'une région suffit (vérifié sur le site, octobre 2026).
   const params = new URLSearchParams({ k: keywords, l: area?.name ?? "France" });
   if (page > 1) params.set("p", String(page));
-  const res = await fetch(`${SEARCH_URL}?${params}`, { headers: BROWSER_HEADERS });
+  const res = await sourceFetch(`${SEARCH_URL}?${params}`, { headers: BROWSER_HEADERS });
   if (!res.ok) throw new Error(`HelloWork HTTP ${res.status}`);
   return parseSearchPage(await res.text());
 }
@@ -105,7 +105,7 @@ async function fetchDetail(card: Card): Promise<ScrapedOffre> {
   let ldContract: string | null = null;
   let ldPosted: string | null = null;
   try {
-    const res = await fetch(card.url, { headers: BROWSER_HEADERS });
+    const res = await sourceFetch(card.url, { headers: BROWSER_HEADERS });
     if (res.ok) {
       const doc = parseDocument(await res.text());
       // Stratégie 1 : JSON-LD JobPosting (propre, structuré)

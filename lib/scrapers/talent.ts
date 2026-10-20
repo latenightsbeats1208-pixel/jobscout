@@ -2,7 +2,7 @@ import { searchAreaCity, type SearchArea } from "@/lib/geo/fr";
 import { quotaPerQuery } from "@/lib/scan/search-plan";
 import "server-only";
 import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./base";
-import { htmlToText } from "./base";
+import { htmlToText, sourceFetch } from "./base";
 import { detectVie } from "@/lib/vie";
 import { nameToCode } from "@/lib/countries";
 import {
@@ -236,7 +236,7 @@ async function fetchSearchPage(domain: Domain, keywords: string, page: number, a
     params.set("radius", String(radius));
   }
   if (page > 1) params.set("p", String(page));
-  const res = await fetch(`https://${domain.host}/jobs?${params}`, { headers: BROWSER_HEADERS });
+  const res = await sourceFetch(`https://${domain.host}/jobs?${params}`, { headers: BROWSER_HEADERS });
   if (!res.ok) throw new Error(`Talent.com ${domain.host} HTTP ${res.status}`);
   return parseSearchPage(await res.text(), domain);
 }
@@ -245,7 +245,7 @@ async function enrich(card: Card): Promise<ScrapedOffre> {
   let descHtml: string | null = null;
   let ld: ReturnType<typeof extractJobPostingLd> = null;
   try {
-    const res = await fetch(card.url, { headers: BROWSER_HEADERS });
+    const res = await sourceFetch(card.url, { headers: BROWSER_HEADERS });
     if (res.ok) {
       const doc = parseDocument(await res.text());
       ld = extractJobPostingLd(doc);

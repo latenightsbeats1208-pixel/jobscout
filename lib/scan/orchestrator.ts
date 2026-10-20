@@ -34,6 +34,14 @@ export type OrchestratorEvent =
 // Local scorer is fast — no need to batch heavily, but we keep batching for predictable yields.
 const SCORE_BATCH = 20;
 /**
+ * Temps maximal passé sur une source. Le scan commercial de 300 offres LinkedIn
+ * en prenait une dizaine de minutes ; la recherche « kiné » du 19 octobre 2026
+ * est restée une heure sur LinkedIn pour 10 offres.
+ */
+const SOURCE_BUDGET_DEFAULT_MS = 12 * 60_000;
+const sourceBudget = (opts: { sourceBudgetMs?: number }) => opts.sourceBudgetMs ?? SOURCE_BUDGET_DEFAULT_MS;
+const minutes = (ms: number) => (ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 1000)} s`);
+/**
  * Offres déjà en base que le scan n'a pas revues, vérifiées en fin de scan :
  * les mieux notées d'abord, au plus ce nombre (une requête chacune, sauf WTTJ).
  */
@@ -41,7 +49,7 @@ const LIVENESS_PER_SCAN = 40;
 
 export async function* runScan(
   onLog: (line: string) => void,
-  opts: { onlySource?: string } = {}
+  opts: { onlySource?: string; sourceBudgetMs?: number } = {}
 ): AsyncGenerator<OrchestratorEvent> {
   const profile = getProfile();
   if (!profile) throw new Error("Aucun profil — terminez d'abord l'onboarding.");
@@ -97,6 +105,10 @@ export async function* runScan(
   let totalInserted = 0;
 
   for (const scraper of scrapers) {
+    // Une source trop lente ne retient pas tout le scan : ses offres déjà lues
+    // restent, et le bilan dit qu'elle a été arrêtée.
+    const deadline = Date.now() + sourceBudget(opts);
+    let outOfTime = false;
     let seen = 0;
     let okCount = 0;
     let failCount = 0;
@@ -142,6 +154,10 @@ export async function* runScan(
             while (pendingScoring.length) yield pendingScoring.shift()!;
           }
         }
+        if (Date.now() > deadline) {
+          outOfTime = true;
+          break;
+        }
       }
 
       // Drain remaining progress (done event)
@@ -170,6 +186,8 @@ export async function* runScan(
     // (moteur absent, API HS) laissait « 0 vues, 0 échecs » et un scan « terminé ».
     if (fatal) {
       say(views ? `[${scraper.name}] interrompue après ${count(views, "vue")}, ${count(okCount, "insérée")} : ${fatal}` : `[${scraper.name}] échec : ${fatal}`);
+    } else if (outOfTime) {
+      say(`[${scraper.name}] arrêtée après ${minutes(sourceBudget(opts))}, site trop lent : ${count(okCount, "offre insérée")}`);
     } else if (!views) {
       // Rien vu, sans erreur : la recherche ne trouve rien sur cette source. Le dire,
       // au lieu d'un « 0 vue, 0 échec » qui se lisait comme une collecte réussie.
@@ -178,7 +196,8 @@ export async function* runScan(
       say(`[${scraper.name}] ${count(views, "vue")}, ${count(okCount, "insérée")}, ${count(failed, "échec")}`);
     }
     // Rien d'exploitable alors que la source répondait : elle a échoué aussi.
-    const empty = !fatal && okCount === 0 && failed > 0;
+    const empty = !fatal && !outOfTime && okCount === 0 && failed > 0;
+    if (outOfTime) failures.push({ source: scraper.name, message: `arrêtée après ${minutes(sourceBudget(opts))}, site trop lent` });
     if (fatal || empty) {
       failures.push({ source: scraper.name, message: fatal ?? "aucune offre exploitable" });
       if (okCount === 0) failedSources++;

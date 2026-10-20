@@ -80,6 +80,19 @@ export async function newContext(): Promise<BrowserContext> {
   });
 }
 
+/**
+ * Délai d'une requête vers un site d'offres. Sans lui, un site qui garde la
+ * connexion ouverte sans répondre faisait attendre chaque requête jusqu'à
+ * 5 minutes : des recherches de test du 19 octobre 2026 sont restées bloquées
+ * une heure sur France Travail, HelloWork ou Welcome to the Jungle.
+ */
+export const SOURCE_TIMEOUT_MS = 20_000;
+
+/** fetch vers un site d'offres, abandonné après SOURCE_TIMEOUT_MS (lecture du corps comprise). */
+export function sourceFetch(input: string | URL, init: RequestInit = {}): Promise<Response> {
+  return fetch(input, { ...init, signal: init.signal ?? AbortSignal.timeout(SOURCE_TIMEOUT_MS) });
+}
+
 export function htmlToText(html: string): string {
   const text = html
     .replace(/<style[\s\S]*?<\/style>/gi, "")

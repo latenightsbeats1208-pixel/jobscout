@@ -2,7 +2,7 @@ import type { SearchArea } from "@/lib/geo/fr";
 import { quotaPerQuery } from "@/lib/scan/search-plan";
 import "server-only";
 import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./base";
-import { htmlToText } from "./base";
+import { htmlToText, sourceFetch } from "./base";
 import { detectVie } from "@/lib/vie";
 import {
   parseDocument,
@@ -88,7 +88,7 @@ async function getToken(): Promise<string | null> {
   if (!id || !secret) return null;
   if (cachedToken && cachedToken.expires > Date.now()) return cachedToken.token;
   try {
-    const res = await fetch(TOKEN_URL, {
+    const res = await sourceFetch(TOKEN_URL, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -177,7 +177,7 @@ async function fetchApi(keywords: string, start: number, size: number, area?: Se
     range: `${start}-${start + size - 1}`,
   });
   if (area) params.set(area.kind === "region" ? "region" : "departement", area.code);
-  const res = await fetch(`${API_BASE}/offres/search?${params}`, {
+  const res = await sourceFetch(`${API_BASE}/offres/search?${params}`, {
     headers: { accept: "application/json", authorization: `Bearer ${token}` },
   });
   if (!res.ok) return [];
@@ -277,7 +277,7 @@ async function fetchHtmlPage(keywords: string, page: number, area?: SearchArea |
   });
   // « 69D » : un département, « 84R » : une région (vérifié sur le site, octobre 2026).
   if (area) params.set("lieux", `${area.code}${area.kind === "region" ? "R" : "D"}`);
-  const res = await fetch(`${SEARCH_PAGE}?${params}`, { headers: BROWSER_HEADERS });
+  const res = await sourceFetch(`${SEARCH_PAGE}?${params}`, { headers: BROWSER_HEADERS });
   // Recherche courante (« Développeur PHP » dans le Finistère, « Acheteur » dans
   // le Finistère) : le site redirige vers sa page métier × lieu, servie en 410
   // mais avec ses 20 premières offres. La rejeter laissait la source à « 0 vue,
@@ -311,7 +311,7 @@ type FtDescriptif = {
 
 async function fetchDescriptif(id: string): Promise<Detail | null> {
   try {
-    const res = await fetch(`${DESCRIPTIF_JSON}/${encodeURIComponent(id)}`, {
+    const res = await sourceFetch(`${DESCRIPTIF_JSON}/${encodeURIComponent(id)}`, {
       headers: { ...BROWSER_HEADERS, accept: "application/json" },
     });
     if (res.status !== 200) return null;
@@ -345,7 +345,7 @@ async function fetchDescriptif(id: string): Promise<Detail | null> {
 // la remet un jour dans le HTML.
 async function fetchDetailPage(url: string, id: string): Promise<Detail | null> {
   try {
-    const res = await fetch(url, { headers: BROWSER_HEADERS });
+    const res = await sourceFetch(url, { headers: BROWSER_HEADERS });
     if (!res.ok) return null;
     // Offre retirée renvoyée vers la recherche : ses cartes sont d'autres offres.
     // L'adresse finale suffit (`res.redirected` est perdu dans l'application, cf. fetchHtmlPage).
