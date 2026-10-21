@@ -160,8 +160,24 @@ function processes() {
     .filter((p) => p.pid !== process.pid);
 }
 
+/**
+ * Processus dont la ligne de commande contient l'un des chemins, écrit tel quel
+ * OU liens résolus : le lanceur démarre node par le chemin réel de son paquet
+ * (/var/… y devient /private/var/…), si bien qu'un chemin non résolu ne
+ * trouverait rien et qu'un contrôle « plus aucun processus » passerait à tort.
+ */
 function processesUnder(...prefixes) {
-  return processes().filter((p) => prefixes.some((x) => p.command.includes(x)));
+  const all = new Set();
+  for (const x of prefixes) {
+    all.add(x);
+    const slash = x.endsWith("/");
+    try {
+      const r = fs.realpathSync(slash ? x.slice(0, -1) : x);
+      all.add(slash ? r + "/" : r);
+    } catch {}
+  }
+  const list = [...all];
+  return processes().filter((p) => list.some((x) => p.command.includes(x)));
 }
 
 function killUnder(...prefixes) {
