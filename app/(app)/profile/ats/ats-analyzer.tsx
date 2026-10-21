@@ -18,14 +18,20 @@ const GRADE_LABEL: Record<AtsScoreResult["grade"], { label: string; variant: "su
   faible: { label: "Faible", variant: "danger" },
 };
 
-export function AtsAnalyzer() {
+export function AtsAnalyzer({
+  initialResult = null,
+  initialFilename = null,
+}: {
+  initialResult?: AtsScoreResult | null;
+  initialFilename?: string | null;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filename, setFilename] = useState<string | null>(null);
+  const [filename, setFilename] = useState<string | null>(initialFilename);
   const [targetTitle, setTargetTitle] = useState("");
-  const [result, setResult] = useState<AtsScoreResult | null>(null);
+  const [result, setResult] = useState<AtsScoreResult | null>(initialResult);
 
   async function analyze(file: File) {
     setError(null);

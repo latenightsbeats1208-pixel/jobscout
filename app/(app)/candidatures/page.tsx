@@ -10,7 +10,7 @@ export default async function CandidaturesPage() {
   const inProgress = items.filter((item) => item.status === "en_cours").length;
   // Sous-titre chiffré (comme en 3.4.10) plutôt qu'un slogan.
   const subtitle = items.length
-    ? `${items.length} candidature${items.length > 1 ? "s" : ""} · ${inProgress} en préparation · ${upcoming ? `${upcoming} échéance${upcoming > 1 ? "s" : ""} à venir` : "aucune échéance à venir"}`
+    ? `${items.length} candidature${items.length > 1 ? "s" : ""} · ${inProgress} en préparation · ${upcoming ? `${upcoming} rappel${upcoming > 1 ? "s" : ""} ou échéance${upcoming > 1 ? "s" : ""} à venir` : "aucun rappel ou échéance à venir"}`
     : "Aucune candidature suivie pour l'instant.";
   return (
     <>

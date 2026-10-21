@@ -9,12 +9,24 @@ import { AiSettings } from "@/components/app/ai-settings";
 import { CleanupButton } from "@/components/app/cleanup-button";
 import { ProfileSwitcher } from "@/components/app/profile-switcher";
 import { ProfileEditor } from "./profile-editor";
+import { scoreAts } from "@/lib/ats/score";
+import { Badge } from "@/components/ui/badge";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProfilePage() {
   const profile = getProfile();
   if (!profile) redirect("/onboarding/upload");
+  const atsScore = profile.raw_cv_text?.trim() ? scoreAts(profile.raw_cv_text) : null;
+  const atsPercent = atsScore && atsScore.max > 0 ? Math.round((atsScore.score / atsScore.max) * 100) : null;
+  const atsGrade = atsScore
+    ? {
+        excellent: { label: "Excellent", variant: "success" as const },
+        bon: { label: "Bon", variant: "info" as const },
+        moyen: { label: "Moyen", variant: "warning" as const },
+        faible: { label: "Faible", variant: "danger" as const },
+      }[atsScore.grade]
+    : null;
   // 0 source cochée : le scan se replie sur les sources par défaut (orchestrateur).
   const sources = profile.sources_enabled.length;
   const countries = profile.target_countries.length;
@@ -43,6 +55,28 @@ export default async function ProfilePage() {
         <div><p className="font-display text-[27px] font-semibold tabular-nums">{profile.educations.length}</p><p className="text-small text-textSecondary">Formations</p></div>
         <div><p className="font-display text-[27px] font-semibold tabular-nums">{profile.skills.length}</p><p className="text-small text-textSecondary">Compétences</p></div>
       </div>
+
+      <section aria-label="Score ATS de votre CV" className="glass-panel mb-8 flex flex-wrap items-center justify-between gap-4 p-5">
+        <div>
+          <p className="text-caption font-semibold uppercase tracking-[0.12em] text-textSecondary">Analyse ATS</p>
+          {atsScore && atsPercent !== null && atsGrade ? (
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <p className="font-display text-[27px] font-semibold tabular-nums">
+                {atsPercent}<span className="text-h3 text-textSecondary">/100</span>
+              </p>
+              <Badge variant={atsGrade.variant}>{atsGrade.label}</Badge>
+              <p className="text-small text-textSecondary">calculé à partir du CV déjà importé, sans poste cible</p>
+            </div>
+          ) : (
+            <p className="mt-2 text-small text-textSecondary">
+              Aucun texte de CV importé à analyser pour le moment.
+            </p>
+          )}
+        </div>
+        <Button asChild variant="secondary">
+          <Link href="/profile/ats"><Gauge className="h-4 w-4" /> Voir l’analyse détaillée</Link>
+        </Button>
+      </section>
 
       <div className="mb-8"><ProfileSwitcher currentName={profile.full_name ?? null} /></div>
 

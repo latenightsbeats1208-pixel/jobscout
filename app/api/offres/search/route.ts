@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
     minScore: parseMinScore(params.get("minScore")),
     // ?vie=1 (lien de l'accueil) : même règle que la puce contrat « V.I.E ».
     vieOnly: params.get("vie") === "1",
+    newOnly: params.get("new") === "1",
     sortBy,
     page: Number.isFinite(page) ? page : 1,
   });

@@ -1,5 +1,5 @@
 import "server-only";
-import { getDb, asJson, parseJson } from "./index";
+import { getDb, asJson, parseJson, getSetting } from "./index";
 import type { ScrapedOffre } from "@/lib/scrapers/base";
 import type { ScoreResult } from "@/lib/ai/score-offre";
 import { classifyContract, CONTRACT_ORDER, type ContractCategory } from "@/lib/contracts";
@@ -31,6 +31,9 @@ export type OffreRow = {
     duration?: number;
     contract?: number;
     reason?: string;
+    matched_sectors?: string[];
+    matched_skills?: string[];
+    profile_skills_not_in_offer?: string[];
   } | null;
   is_vie: number;
   raw_payload: string | null;
@@ -231,6 +234,8 @@ export function searchOffres(opts: {
   minScore?: boolean | number;
   /** Raccourci de ?vie=1 : même règle que la puce contrat « V.I.E » (contract_category). */
   vieOnly?: boolean;
+  /** Restreint aux offres nouvellement découvertes lors du dernier scan. */
+  newOnly?: boolean;
   sortBy?: OffersSort;
   page?: number;
 } = {}): OffersSearch {
@@ -238,10 +243,17 @@ export function searchOffres(opts: {
   const query = normalizeSearch((opts.query ?? "").trim());
   const haystacks = query ? getHaystacks(cache) : null;
   const contracts = new Set(opts.contracts ?? []);
+  const newIds = opts.newOnly
+    ? new Set(
+        parseJson<unknown[]>(getSetting("last_scan_new_offer_ids"), [])
+          .filter((id): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0)
+      )
+    : null;
   const minScore = opts.minScore === true ? 60 : typeof opts.minScore === "number" ? opts.minScore : 0;
   const filtered = cache.smart.filter((row) => {
     if (haystacks && !(haystacks.get(row.id) ?? "").includes(query)) return false;
     if (opts.source && row.source !== opts.source) return false;
+    if (newIds && !newIds.has(row.id)) return false;
     if (opts.country && row.country !== opts.country) return false;
     if (contracts.size && !contracts.has(row.contract_category)) return false;
     if (minScore > 0 && (row.score ?? 0) < minScore) return false;
@@ -356,6 +368,67 @@ export function setOffreScore(id: number, score: ScoreResult) {
   getDb()
     .prepare("UPDATE offres SET score = ?, score_breakdown = ? WHERE id = ?")
     .run(score.score, asJson({ ...score.breakdown, reason: score.reason }), id);
+}
+
+export function newOffersFromLastScan(limit = 6): OffreSummary[] {
+  const ids = parseJson<unknown[]>(getSetting("last_scan_new_offer_ids"), [])
+    .filter((id): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0);
+  if (!ids.length) return [];
+  const bounded = Math.max(1, Math.min(20, Math.trunc(limit)));
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = getDb()
+    .prepare(
+      `SELECT o.id, o.source, o.url, o.title, o.company, o.country, o.location,
+              o.posted_at, o.score, o.is_vie, o.description_status,
+              o.score_breakdown, o.description_text, o.contract_type,
+              EXISTS(SELECT 1 FROM documents WHERE offre_id = o.id AND type = 'cv') AS has_cv,
+              EXISTS(SELECT 1 FROM documents WHERE offre_id = o.id AND type = 'lm') AS has_lm
+       FROM offres o
+       WHERE o.id IN (${placeholders})
+       ORDER BY o.scraped_at DESC, o.id DESC
+       LIMIT ?`
+    )
+    .all(...ids, bounded) as {
+      id: number;
+      source: string;
+      url: string;
+      title: string;
+      company: string;
+      country: string | null;
+      location: string | null;
+      posted_at: string | null;
+      score: number;
+      is_vie: number;
+      description_status: "ok" | "failed" | "partial";
+      score_breakdown: string | null;
+      description_text: string;
+      contract_type: string | null;
+      has_cv: number;
+      has_lm: number;
+    }[];
+  return rows.map((row) => ({
+    id: row.id,
+    source: row.source,
+    url: row.url,
+    title: row.title,
+    company: row.company,
+    country: row.country,
+    location: row.location,
+    posted_at: row.posted_at,
+    score: row.score,
+    is_vie: row.is_vie,
+    description_status: row.description_status,
+    description_text: row.description_text.slice(0, 1000),
+    score_reason: parseJson<{ reason?: string } | null>(row.score_breakdown, null)?.reason ?? null,
+    contract_category: classifyContract({ contract_type: row.contract_type, title: row.title, description_text: row.description_text }),
+    has_cv: Boolean(row.has_cv),
+    has_lm: Boolean(row.has_lm),
+  }));
+}
+
+export function newOffersFromLastScanCount(): number {
+  return parseJson<unknown[]>(getSetting("last_scan_new_offer_ids"), [])
+    .filter((id): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0).length;
 }
 
 export function listOffres(opts?: {

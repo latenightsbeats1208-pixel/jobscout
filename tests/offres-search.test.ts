@@ -1,8 +1,9 @@
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/lib/db";
+import { setSetting } from "@/lib/db";
 import { dbPath } from "@/lib/paths";
-import { offresCounts, searchOffres, setOffreScore, upsertOffreFromSource, type ScrapedOffre } from "@/lib/db/offres";
+import { offresCounts, searchOffres, setOffreScore, upsertOffreFromSource, newOffersFromLastScan, newOffersFromLastScanCount, type ScrapedOffre } from "@/lib/db/offres";
 
 /**
  * searchOffres (liste /offres et /api/offres/search) : pagination stable, filtres,
@@ -129,6 +130,17 @@ describe("cache de searchOffres", () => {
     upsertOffreFromSource("wttj", { ...again, title: "Deuxième, titre corrigé" });
     expect(searchOffres({ query: "titre corrige" }).total).toBe(1);
     expect(searchOffres().facets.sources).toEqual(["hellowork", "wttj"]);
+  });
+
+  it("isole les nouvelles offres du dernier scan sans inclure les offres précédentes", () => {
+    const old = add({ title: "Ancienne offre" });
+    const freshA = add({ title: "Nouvelle offre A" });
+    const freshB = add({ title: "Nouvelle offre B" });
+    setSetting("last_scan_new_offer_ids", JSON.stringify([freshA, freshB]));
+    expect(searchOffres({ newOnly: true }).offers.map((offer) => offer.id).sort()).toEqual([freshA, freshB].sort());
+    expect(newOffersFromLastScan(1)).toHaveLength(1);
+    expect(newOffersFromLastScanCount()).toBe(2);
+    expect(searchOffres({ newOnly: true }).offers.map((offer) => offer.id)).not.toContain(old);
   });
 
   it("voit un document généré (badge « Dossier prêt »)", () => {

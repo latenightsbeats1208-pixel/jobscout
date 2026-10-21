@@ -1,7 +1,9 @@
 import path from "node:path";
+import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
+const nextConfig = (phase: string): NextConfig => ({
+  distDir: phase === PHASE_DEVELOPMENT_SERVER ? ".next-dev" : ".next",
   devIndicators: false,
   // Sortie autonome : .next/standalone contient server.js + le strict nécessaire
   // de node_modules. C'est la base du paquet Windows (installer/).
@@ -38,6 +40,6 @@ const nextConfig: NextConfig = {
   // requis par jsdom, donc par tous les scrapers). L'exclusion des données
   // utilisateur est faite de façon explicite et vérifiable à l'assemblage
   // (installer/assemble.mjs) puis contrôlée par installer/check-leaks.mjs.
-};
+});
 
 export default nextConfig;

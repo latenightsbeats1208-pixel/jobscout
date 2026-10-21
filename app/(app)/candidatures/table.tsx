@@ -34,7 +34,7 @@ const EMPTY_STAGE_COPY: Record<string, { title: string; description: string }> =
 const UNSAVED_MESSAGE = "Des modifications du suivi ne sont pas enregistrées. Quitter la page sans les enregistrer ?";
 
 /** Brouillon des champs à enregistrement explicite (le statut, lui, part dès qu'on le change). */
-type Draft = { notes: string; contact: string; deadline: string };
+type Draft = { notes: string; contact: string; deadline: string; follow_up_date: string };
 type Row = CandidatureWithOffre;
 
 function matchesStage(status: string, stage: string): boolean {
@@ -68,11 +68,11 @@ function applyUrl(row: Row): string | null {
 }
 
 function savedDraft(row: Row): Draft {
-  return { notes: row.notes ?? "", contact: row.contact ?? "", deadline: row.deadline ?? "" };
+  return { notes: row.notes ?? "", contact: row.contact ?? "", deadline: row.deadline ?? "", follow_up_date: row.follow_up_date ?? "" };
 }
 
 function sameDraft(a: Draft, b: Draft): boolean {
-  return a.notes === b.notes && a.contact === b.contact && a.deadline === b.deadline;
+  return a.notes === b.notes && a.contact === b.contact && a.deadline === b.deadline && a.follow_up_date === b.follow_up_date;
 }
 
 export function CandidaturesTable({ initial }: { initial: Row[] }) {
@@ -160,7 +160,7 @@ export function CandidaturesTable({ initial }: { initial: Row[] }) {
 
   async function saveDraft(row: Row): Promise<boolean> {
     const draft = drafts[row.id] ?? savedDraft(row);
-    const ok = await patch(row.id, { notes: draft.notes || null, contact: draft.contact || null, deadline: draft.deadline || null });
+    const ok = await patch(row.id, { notes: draft.notes || null, contact: draft.contact || null, deadline: draft.deadline || null, follow_up_date: draft.follow_up_date || null });
     if (ok) dropDraft(row.id);
     return ok;
   }
@@ -294,7 +294,7 @@ export function CandidaturesTable({ initial }: { initial: Row[] }) {
                 <tr className="border-b border-border text-left text-caption text-textSecondary">
                   <th scope="col" className="px-5 py-3 font-semibold">Poste</th>
                   <th scope="col" className="px-3 py-3 font-semibold">Statut</th>
-                  <th scope="col" className="px-3 py-3 font-semibold">Échéance</th>
+                  <th scope="col" className="px-3 py-3 font-semibold">Échéance / relance</th>
                   <th scope="col" className="px-3 py-3 text-right font-semibold">Score</th>
                   <th scope="col" className="px-3 py-3 font-semibold">Contact et notes</th>
                   <th scope="col" className="px-5 py-3 text-right font-semibold"><span className="sr-only">Actions</span></th>
@@ -318,7 +318,13 @@ export function CandidaturesTable({ initial }: { initial: Row[] }) {
                           <p className="mt-0.5 truncate text-caption text-textSecondary">{rowCompany(row)}{country ? ` · ${country}` : ""} · ajoutée le {displayDate(row.applied_at)}</p>
                         </td>
                         <td className="px-3 py-3"><Badge variant={meta.variant}>{meta.label}</Badge></td>
-                        <td className="whitespace-nowrap px-3 py-3">{row.deadline ? displayDate(row.deadline) : <span className="text-textSecondary">—</span>}</td>
+                        <td className="px-3 py-3">
+                          <div className="space-y-1 whitespace-nowrap">
+                            {row.deadline && <p>{displayDate(row.deadline)} · échéance</p>}
+                            {row.follow_up_date && <p className="text-textSecondary">{displayDate(row.follow_up_date)} · relance</p>}
+                            {!row.deadline && !row.follow_up_date && <span className="text-textSecondary">—</span>}
+                          </div>
+                        </td>
                         <td className="px-3 py-3 text-right font-semibold tabular-nums">{score ?? <span className="font-normal text-textSecondary">—</span>}</td>
                         <td className="px-3 py-3 text-textSecondary">
                           {row.contact || row.notes ? (
@@ -389,7 +395,7 @@ function CandidatureCard({ row, dirty, editor }: { row: Row; dirty: boolean; edi
 
       <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border pt-4 text-small">
         {score != null && <span><strong className="tabular-nums">{score}</strong><span className="text-textSecondary"> / 100 d'adéquation</span></span>}
-        <span className="inline-flex items-center gap-1.5 text-textSecondary"><CalendarDays className="h-4 w-4" /> {row.deadline ? `Échéance : ${displayDate(row.deadline)}` : "Aucune échéance"}</span>
+        <span className="inline-flex items-center gap-1.5 text-textSecondary"><CalendarDays className="h-4 w-4" />{row.deadline || row.follow_up_date ? ` ${row.deadline ? `Échéance : ${displayDate(row.deadline)}` : ""}${row.deadline && row.follow_up_date ? " · " : ""}${row.follow_up_date ? `Relance : ${displayDate(row.follow_up_date)}` : ""}` : " Aucun rappel prévu"}</span>
         {url && <AnnonceLink url={url} status={row.status} className="sm:ml-auto" />}
       </div>
 
@@ -444,6 +450,9 @@ function CandidatureEditor({ row, layout, draft, dirty, onDraft, onReset, onSave
         </label>
         <label className="text-small font-semibold">Échéance
           <input type="date" value={draft.deadline} onChange={(event) => onDraft({ deadline: event.target.value })} className={fieldClass} />
+        </label>
+        <label className="text-small font-semibold">Date de relance
+          <input type="date" value={draft.follow_up_date} onChange={(event) => onDraft({ follow_up_date: event.target.value })} className={fieldClass} />
         </label>
         <label className="text-small font-semibold">Contact
           <input type="text" value={draft.contact} onChange={(event) => onDraft({ contact: event.target.value })} placeholder="Nom ou adresse email" className={fieldClass} />

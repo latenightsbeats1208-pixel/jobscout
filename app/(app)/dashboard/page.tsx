@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Briefcase, CalendarClock, CalendarDays, Clock, FileText, Gauge, Globe, MapPin, Search, Send, type LucideIcon } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Briefcase, CalendarClock, CalendarDays, Clock, FileText, Gauge, Globe, MapPin, Search, Send, Sparkles, type LucideIcon } from "lucide-react";
 import { ScoreOrbit } from "@/components/app/score-orbit";
 import { Badge, type BadgeVariant } from "@/components/ui/badge";
-import { suggestedOffres, offresCounts } from "@/lib/db/offres";
-import { listCandidatures, candidaturesCounts, upcomingDeadlines } from "@/lib/db/candidatures";
+import { suggestedOffres, offresCounts, newOffersFromLastScan, newOffersFromLastScanCount } from "@/lib/db/offres";
+import { listCandidatures, candidaturesCounts, upcomingDeadlines, searchReport } from "@/lib/db/candidatures";
 import { listDocuments } from "@/lib/db/documents";
 import { highScoreFigure, untrackedOffresCount, vieFigure } from "@/lib/db/dashboard";
 import { getProfile } from "@/lib/db/queries";
@@ -34,6 +34,9 @@ export default async function DashboardPage() {
   const candidatures = listCandidatures();
   const candCounts = candidaturesCounts();
   const deadlines = upcomingDeadlines(5);
+  const newOffers = newOffersFromLastScan(5);
+  const newOffersCount = newOffersFromLastScanCount();
+  const report = searchReport(30);
   const documents = listDocuments();
   const untrackedCount = untrackedOffresCount();
   // D4 : carte V.I.E pour un profil qui en cherche (même détection que la 3.5.0 : contrats recherchés),
@@ -108,6 +111,48 @@ export default async function DashboardPage() {
           : <Metric icon={Gauge} label={`Offres à ${HIGH_SCORE} et plus`} value={thirdFigure.total} detail={`dont ${thirdFigure.recent.toLocaleString("fr-FR")} publiée${thirdFigure.recent > 1 ? "s" : ""} ces 7 derniers jours`} href={`/offres?score=${HIGH_SCORE}`} />}
       </section>
 
+      <section aria-label="Nouvelles offres depuis le dernier scan" className="glass-panel overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4 sm:px-6">
+          <div>
+            <h2 className="flex items-center gap-2 font-display text-[19px] font-medium"><Sparkles className="h-4 w-4 text-accent" />Nouvelles depuis le dernier scan</h2>
+            <p className="mt-1 text-caption text-textSecondary">{newOffersCount ? plural(newOffersCount, "offre découverte") : "Aucune nouvelle offre au dernier scan"}</p>
+          </div>
+          <Link href="/offres?new=1" className="inline-flex items-center gap-1 text-caption font-medium text-textSecondary hover:text-accent">Voir toutes les nouveautés <ArrowUpRight className="h-3.5 w-3.5" /></Link>
+        </div>
+        {newOffers.length ? (
+          <ul>
+            {newOffers.map((offer) => (
+              <li key={offer.id} className="border-b border-border last:border-0">
+                <Link href={`/offres/${offer.id}`} className="offer-row group flex items-center gap-3 px-5 py-3.5 sm:px-6">
+                  <Badge variant="info">Nouveau</Badge>
+                  <span className="min-w-0 flex-1">
+                    <span className="block line-clamp-1 text-small font-medium">{offer.title}</span>
+                    <span className="mt-0.5 block truncate text-caption text-textSecondary">{offer.company || "Entreprise non précisée"} · {offer.location || offer.country || "Lieu non précisé"}</span>
+                  </span>
+                  <span className="shrink-0 text-small font-semibold tabular-nums">{offer.score}/100</span>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-textSecondary transition-transform group-hover:translate-x-1 group-hover:text-accent" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-5 py-5 text-small text-textSecondary sm:px-6">Les offres ajoutées lors d’un scan apparaîtront ici.</p>
+        )}
+      </section>
+
+      <section aria-labelledby="search-report-title" className="glass-panel p-5 sm:p-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="search-report-title" className="font-display text-[19px] font-medium">Votre bilan de recherche</h2>
+          <span className="text-caption text-textSecondary">Candidatures ajoutées sur les 30 derniers jours</span>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <ReportMetric label="Candidatures" value={report.total} />
+          <ReportMetric label="En entretien" value={report.interviews} />
+          <ReportMetric label="Avec une réponse" value={report.responses} detail={`${report.responseRate} %`} />
+          <ReportMetric label="Décisions" value={report.accepted + report.refused} detail={`${report.accepted} acceptée${report.accepted === 1 ? "" : "s"} · ${report.refused} refusée${report.refused === 1 ? "" : "s"}`} />
+        </div>
+      </section>
+
       <div className="reveal-panel reveal-delay-2 grid items-start gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(290px,0.85fr)]">
         <section aria-labelledby="recommended-title" className="glass-panel min-w-0 overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-5 sm:px-6">
@@ -147,8 +192,8 @@ export default async function DashboardPage() {
           <section aria-labelledby="deadlines-title" className="glass-panel overflow-hidden">
             <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-5">
               <div>
-                <h2 id="deadlines-title" className="font-display text-[19px] font-medium">Prochaines échéances</h2>
-                <p className="mt-0.5 text-caption text-textSecondary">{candCounts.upcoming ? `${plural(candCounts.upcoming, "échéance")} à venir` : "Aucune échéance à venir"}</p>
+                <h2 id="deadlines-title" className="font-display text-[19px] font-medium">Rappels et échéances</h2>
+                <p className="mt-0.5 text-caption text-textSecondary">{candCounts.upcoming ? `${plural(candCounts.upcoming, "rappel ou échéance")} à venir` : "Aucun rappel ou échéance à venir"}</p>
               </div>
               <Link href="/candidatures" className="inline-flex items-center gap-1 text-caption font-medium text-textSecondary hover:text-accent">Le suivi <ArrowUpRight className="h-3.5 w-3.5" /></Link>
             </div>
@@ -169,14 +214,14 @@ export default async function DashboardPage() {
                             ? <Link href={`/offres/${d.offre_id}`} className="block line-clamp-2 text-small font-semibold leading-snug hover:text-accent">{d.title ?? "Poste non précisé"}</Link>
                             : <span className="block line-clamp-2 text-small font-semibold leading-snug">{d.title ?? "Poste non précisé"}</span>}
                           <span className="mt-0.5 block truncate text-small text-textSecondary">{d.company ?? "Entreprise non précisée"}</span>
-                          <span className="mt-1 flex items-center gap-1.5 text-caption text-textSecondary"><CalendarClock className="h-3.5 w-3.5 shrink-0" />{dueLabel(d.deadline)}{status ? ` · ${status.label}` : ""}</span>
+                          <span className="mt-1 flex items-center gap-1.5 text-caption text-textSecondary"><CalendarClock className="h-3.5 w-3.5 shrink-0" />{d.kind === "follow_up" ? `Relance : ${dueLabel(d.deadline, true)}` : `Échéance : ${dueLabel(d.deadline)}`}{status ? ` · ${status.label}` : ""}</span>
                         </span>
                       </li>
                     );
                   })}
                 </ol>
               ) : (
-                <p className="text-small text-textSecondary">Ajoutez une date d’échéance à une candidature depuis le suivi : les cinq plus proches s’afficheront ici.</p>
+                <p className="text-small text-textSecondary">Ajoutez une date de relance ou une échéance depuis le suivi : les actions à venir et les relances en retard s’afficheront ici.</p>
               )}
             </div>
           </section>
@@ -245,13 +290,13 @@ function publishedLabel(value: string | null): string | null {
 }
 
 /** Nombre de jours avant l'échéance, en jours calendaires locaux. */
-function dueLabel(deadline: string): string {
+function dueLabel(deadline: string, isFollowUp = false): string {
   const due = new Date(`${deadline.slice(0, 10)}T12:00:00`).getTime();
   const now = new Date();
   const todayNoon = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12).getTime();
   const days = Math.round((due - todayNoon) / 86_400_000);
   if (!Number.isFinite(days)) return "Date illisible";
-  if (days < 0) return "Échéance dépassée";
+  if (days < 0) return isFollowUp ? "en retard" : "dépassée";
   if (days === 0) return "Aujourd’hui";
   if (days === 1) return "Demain";
   return `Dans ${days} jours`;
@@ -271,5 +316,15 @@ function Metric({ icon: Icon, label, value, detail, href }: { icon: LucideIcon; 
         <span className="mt-2 block text-caption text-textSecondary">{detail}</span>
       </span>
     </Link>
+  );
+}
+
+function ReportMetric({ label, value, detail }: { label: string; value: number; detail?: string }) {
+  return (
+    <div className="rounded-[14px] border border-border px-4 py-3">
+      <p className="font-display text-[30px] font-light leading-none tabular-nums">{value.toLocaleString("fr-FR")}</p>
+      <p className="mt-2 text-caption font-medium">{label}</p>
+      {detail && <p className="mt-1 text-caption text-textSecondary">{detail}</p>}
+    </div>
   );
 }
