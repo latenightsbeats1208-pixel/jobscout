@@ -17,6 +17,21 @@ function score(text: string): { wordCount: number; hasCvKeywords: boolean; score
   return { wordCount, hasCvKeywords, score: wordCount + (hasCvKeywords ? 50 : 0) };
 }
 
+/**
+ * Entre les deux lectures d'un PDF, faut-il retenir celle de pdfjs (colonnes
+ * reconstruites) plutôt que celle de pdf-parse ? Oui si elle est nettement plus
+ * riche — sauf si elle a perdu les mots-clés que pdf-parse voit : certains PDF
+ * (Canva) découpent les titres lettre par lettre, ce qui gonfle le nombre de
+ * « mots » de pdfjs tout en rendant « EXPÉRIENCE », « FORMATION »…
+ * méconnaissables, et le CV était alors refusé comme illisible.
+ */
+export function preferStructuredPdfText(fast: string, structured: string): boolean {
+  const fastScore = score(fast);
+  const structScore = score(structured);
+  if (fastScore.hasCvKeywords && !structScore.hasCvKeywords) return false;
+  return structScore.score > fastScore.score * 1.1;
+}
+
 async function extractPdfFast(buffer: Buffer): Promise<string> {
   // pdf-parse is CommonJS and reads a test file at import time on some setups,
   // so we import the inner module path directly to avoid that side effect.
@@ -158,8 +173,7 @@ export async function extractText(buffer: Buffer, filename?: string): Promise<Ex
     }
     const structScore = score(structured);
 
-    // Pick the richer one. Prefer pdfjs if it found significantly more keywords/words.
-    if (structScore.score > fastScore.score * 1.1) {
+    if (preferStructuredPdfText(fast, structured)) {
       return {
         text: structured,
         kind,

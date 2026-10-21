@@ -107,6 +107,16 @@ export function translateAiError(e: unknown): TranslatedAiError | null {
     const label = providerLabel(h.provider);
     const detail = (h.detail ?? "").trim();
     const suffix = detail ? ` (détail : ${detail.slice(0, 160)})` : "";
+    // Ollama en local n'a pas de clé : son 401 vient des modèles « cloud », qu'il
+    // relaie vers ollama.com et qui exigent un compte connecté sur sa machine.
+    // « Clé API refusée » envoyait l'utilisateur chercher une clé qui n'existe pas.
+    if (status === 401 && h.provider === "ollama") {
+      return {
+        message:
+          "Ollama n'est pas connecté à un compte Ollama : les modèles « cloud » (nom terminé par « cloud ») l'exigent. Sur la machine où tourne Ollama, lancez « ollama signin » et validez le lien affiché, puis réessayez — ou choisissez un modèle installé localement dans Profil › Génération IA. (Serveur Ollama distant protégé par une clé : vérifiez la clé.)",
+        status,
+      };
+    }
     const byStatus: Record<number, string> = {
       400: `${label} a refusé la demande — le modèle choisi ne gère peut-être pas les réponses structurées, ou le document est trop long pour lui. Essayez un autre modèle dans Profil › Génération IA.${suffix}`,
       401: `Clé API refusée par ${label} — vérifiez-la dans Profil › Génération IA.`,
@@ -160,6 +170,42 @@ export function translateAiError(e: unknown): TranslatedAiError | null {
     const code = body?.error?.code;
     if (typeof code === "string" && CODE_MESSAGES[code]) {
       return { message: CODE_MESSAGES[code], status };
+    }
+    // Refus d'Anthropic en direct (clé de l'utilisateur) : { error: { type, message } },
+    // sans `code`. Le motif est écrit dans le journal du serveur — sans lui, un
+    // « HTTP 400 » ne se diagnostiquait pas — et les cas courants sont traduits.
+    // Ni clé ni contenu dans ce message : Anthropic n'y décrit que le refus.
+    const upstream = (body as { error?: { type?: unknown; message?: unknown } } | undefined)?.error;
+    const type = typeof upstream?.type === "string" ? upstream.type : "";
+    const detail = typeof upstream?.message === "string" ? upstream.message : "";
+    if (type || detail) console.warn(`[llm] anthropic HTTP ${status} ${type} : ${detail.slice(0, 300)}`);
+    // Seul cas lu dans le texte : Anthropic signale un solde épuisé par un 400
+    // « invalid_request_error » que rien d'autre ne distingue.
+    if (type === "billing_error" || /credit balance/i.test(detail)) {
+      return {
+        message:
+          "Crédit épuisé chez Anthropic (Claude) — rechargez votre compte sur platform.claude.com (Billing), ou changez de fournisseur dans Profil › Génération IA.",
+        status: 402,
+      };
+    }
+    if (type === "authentication_error") {
+      return { message: "Clé API refusée par Anthropic (Claude) — vérifiez-la dans Profil › Génération IA.", status };
+    }
+    if (type === "permission_error") {
+      return { message: "Accès refusé par Anthropic (Claude) — votre clé n'a pas accès à ce modèle.", status };
+    }
+    if (type === "not_found_error") {
+      return {
+        message:
+          "Modèle introuvable chez Anthropic (Claude) — vérifiez le nom du modèle dans Profil › Génération IA (« Charger la liste »).",
+        status,
+      };
+    }
+    if (type === "rate_limit_error") {
+      return { message: "Limite de débit atteinte chez Anthropic (Claude) — patientez une minute puis réessayez.", status };
+    }
+    if (type === "overloaded_error") {
+      return { message: "Anthropic (Claude) est momentanément surchargé — réessayez dans un instant.", status };
     }
     // Inconnu (y compris page HTML d'un edge que le SDK n'a pas su parser) :
     // fallback générique avec le statut, sans relayer un corps illisible.

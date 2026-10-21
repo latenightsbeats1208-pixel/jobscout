@@ -245,6 +245,16 @@ describe("fournisseur compatible OpenAI", () => {
     expect(translateAiError(err)!.message).toBe("Clé API refusée par Mistral AI — vérifiez-la dans Profil › Génération IA.");
   });
 
+  it("Ollama non connecté à son compte (401 sur un modèle cloud) → « ollama signin », pas « clé refusée »", async () => {
+    const { fn, calls } = fakeFetch([{ status: 401, body: { error: { message: "unauthorized" } } }]);
+    const err = await callStructured(REQ, cfgFor("ollama"), { fetch: fn, ...noSleep }).catch((e) => e);
+    expect(calls).toHaveLength(1);
+    const t = translateAiError(err)!;
+    expect(t.status).toBe(401);
+    expect(t.message).toContain("ollama signin");
+    expect(t.message).not.toContain("Clé API refusée");
+  });
+
   it("modèle inconnu (404 partout) → message « modèle introuvable »", async () => {
     const { fn } = fakeFetch([{ status: 404, body: { error: { message: "model not found" } } }]);
     const err = await callStructured(REQ, cfgFor("openai"), { fetch: fn, ...noSleep }).catch((e) => e);
