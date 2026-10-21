@@ -3,6 +3,13 @@
 Chaîne de fabrication de `JobScout_Setup_vX.Y.Z.exe` : un installeur autonome
 qui tourne sur un PC Windows vierge, sans Node ni Python.
 
+Le paquet Mac (`JobScout-Mac.dmg`, construit et recetté sur les runners macOS
+de GitHub Actions) a sa propre chaîne, dans `installer/mac/` : voir
+[`installer/mac/README.md`](mac/README.md). Il réutilise `assemble.mjs`
+(option `target: "mac"`), `check-leaks.mjs`, `make-icon.mjs`, `macho.mjs` et
+`tree-digest.mjs`, avec des valeurs par défaut qui doivent laisser le paquet
+Windows inchangé (contrôle de non-régression décrit dans le README Mac).
+
 ## Prérequis (poste de build)
 
 - Windows 10 ou 11.
@@ -24,7 +31,7 @@ node installer/test-install.mjs
 ```
 
 Sorties : `installer/dist/JobScout/` (charge utile) et
-`installer/output/JobScout_Setup_<version>.exe` (installeur).
+`installer/output/JobScout_Setup_v<version>.exe` (installeur).
 
 Variantes utiles :
 
@@ -143,7 +150,7 @@ JobScout/
 | Quoi | Où |
 | --- | --- |
 | Installation | `%LOCALAPPDATA%\Programs\JobScout` (par utilisateur, sans admin) |
-| Base, documents, journaux | `%LOCALAPPDATA%\JobScout` |
+| Base, documents, journaux, modèles OCR (`ocr\`, depuis la 3.4.18) | `%LOCALAPPDATA%\JobScout` |
 | Moteur LinkedIn (Chromium) | `%LOCALAPPDATA%\JobScout\browsers`, téléchargé à la demande |
 | Variant de test | `%LOCALAPPDATA%\Programs\JobScout Test` et `%LOCALAPPDATA%\JobScout Test` — totalement séparés |
 
@@ -156,10 +163,13 @@ données (elle propose seulement de les effacer, réponse par défaut « Non »)
 
 1. **`.env` et `data/` recopiés dans la sortie standalone.** `next build` copie
    `.env` (donc la clé API du poste) et tout ce que le traceur croise sous
-   `data/`. `assemble.mjs` ne fait donc jamais de copie brute : exclusions
-   explicites, plus `outputFileTracingExcludes` dans `next.config.ts`. Les
-   manifests `*.nft.json` sont supprimés : ils listent les fichiers rencontrés,
-   noms de CV générés compris.
+   `data/`. `assemble.mjs` ne fait donc jamais de copie brute : `.env*` et
+   `data/` sont exclus explicitement à l'assemblage, puis contrôlés par
+   `check-leaks.mjs`. `next.config.ts` n'a volontairement pas
+   d'`outputFileTracingExcludes` : un filtre `data/**` y retirerait aussi des
+   dossiers `data/` légitimes de dépendances (`css-tree/data/patch.json`,
+   requis par jsdom). Les manifests `*.nft.json` sont supprimés : ils listent
+   les fichiers rencontrés, noms de CV générés compris.
 
 2. **Chemins absolus du poste de build.** Webpack inscrit le chemin du projet
    dans les identifiants de modules (`.next/server/**/page.js`, manifests de

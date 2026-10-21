@@ -1,10 +1,190 @@
 # Installer JobScout sur Mac, pas à pas
 
-Ce guide est la version Mac du [guide d'installation](INSTALL.md). Il s'adresse à tout le monde, y compris si vous n'avez jamais ouvert le Terminal. Suivez les étapes dans l'ordre : chacune dit ce que vous allez voir et comment savoir que c'est réussi.
+Ce guide est la version Mac du [guide d'installation](INSTALL.md). Il s'adresse à tout le monde, y compris si vous n'avez jamais ouvert le Terminal. Il propose deux méthodes. Suivez les étapes de celle que vous choisissez, dans l'ordre : chacune dit ce que vous allez voir et comment savoir que c'est réussi.
 
-> Ce guide a été écrit à partir du code de JobScout et de la documentation officielle d'Apple, de Node.js et de Playwright. Son parcours (installation des dépendances, démarrage, moteur LinkedIn, lanceur) est rejoué automatiquement à chaque modification de JobScout sur des Mac de test de GitHub, à puce Apple et Intel. Les noms des boutons de macOS peuvent varier un peu selon votre version. Les durées marquées « sous Windows » n'ont pas été mesurées sur un Mac.
+| | **L'application JobScout pour Mac** (recommandée) | **Depuis le code source**, avec le Terminal |
+|---|---|---|
+| **Pour qui** | tout le monde | si vous voulez suivre le code de près ou le modifier |
+| **Ce que vous installez** | une application, à glisser dans le dossier Applications. Node.js est inclus | Node.js, puis le code de JobScout et ses dépendances |
+| **Terminal** | jamais nécessaire | pour l'installation, chaque lancement (le lanceur l'ouvre pour vous) et chaque mise à jour |
+| **Versions de macOS** | macOS 11 Big Sur ou plus récent | macOS 11 Big Sur ou plus récent |
+| **Mise à jour** | retéléchargez l'application, puis autorisez-la une fois | `git pull` ou un nouveau ZIP, puis `npm ci` |
+| **Vos données** | `~/Library/Application Support/JobScout` | `jobscout/data`, dans le dossier du projet |
+| **Adresse dans le navigateur** | http://127.0.0.1:3477 | http://127.0.0.1:3000 |
 
-## En bref
+Les deux méthodes ont chacune leur dossier de données : l'application ne voit pas les données d'une installation faite par le Terminal, et inversement.
+
+## La méthode simple : l'application JobScout pour Mac (recommandée)
+
+Un fichier à télécharger, une icône à glisser dans Applications, une autorisation à donner à macOS : c'est tout. Ni Terminal, ni Node.js, ni Xcode, ni Homebrew.
+
+> L'application est construite puis testée automatiquement sur des Mac de test de GitHub (macOS 15 Sequoia et macOS 26 Tahoe, à puce Apple et Intel) avant chaque publication. macOS 11 à 14 ne sont pas testés automatiquement. Les fenêtres de macOS décrites ici suivent la documentation d'Apple en français : le nom des boutons peut varier un peu selon votre version.
+
+### L'application en bref
+
+| | |
+|---|---|
+| **Votre Mac** | puce Apple (M1 et suivantes) ou processeur Intel : le même fichier sert aux deux. Pour savoir ce que vous avez : menu Pomme (la pomme en haut à gauche de l'écran) › **À propos de ce Mac**. La ligne « Puce » indique une puce Apple, la ligne « Processeur » un Mac Intel. |
+| **Versions de macOS** | **macOS 11 Big Sur ou plus récent** (même menu : le nom et le numéro de macOS s'affichent). **LinkedIn** demande macOS 12 ; une **IA locale** (Ollama, LM Studio) demande macOS 14 (voir « [Une IA locale sur Mac](#une-ia-locale-sur-mac) »). |
+| **Ce qu'il faut** | une connexion internet, le mot de passe de votre session Mac (pour autoriser JobScout la première fois), votre CV et une IA : une clé API chez le fournisseur de votre choix, ou un modèle local gratuit ([guide de l'IA](GUIDE-IA.md)). Votre compte n'est pas administrateur ? macOS peut demander le nom et le mot de passe d'un administrateur de ce Mac. |
+| **Temps** | quelques minutes pour télécharger, glisser et autoriser l'application (estimation), puis 5 à 10 minutes pour le premier réglage (relevé sous Windows). |
+| **Coût** | JobScout est gratuit. L'IA en ligne est facturée par votre fournisseur, sur votre clé (avec Claude, environ 0,12 à 0,20 $ par dossier CV + lettre) ; elle est gratuite avec un modèle local. Le scan et le tri des offres sont gratuits. |
+| **Où vont vos données** | profil, offres, documents, candidatures et clés API restent sur votre Mac, dans `~/Library/Application Support/JobScout` (voir « [Les données de l'application](#les-données-de-lapplication) »). Pour lire votre CV et rédiger, JobScout envoie le texte du CV, votre profil et l'offre au fournisseur d'IA choisi, ou à aucun avec un modèle local. Pendant un scan, les sites d'offres reçoivent vos mots-clés, vos pays cibles et votre adresse IP. L'éditeur de JobScout ne reçoit rien. Détail : [politique de confidentialité](CONFIDENTIALITE.md). |
+
+### Télécharger l'application
+
+1. Dans Safari, cliquez sur ce lien : **[télécharger JobScout-Mac.dmg](https://github.com/latenightsbeats1208-pixel/jobscout/releases/latest/download/JobScout-Mac.dmg)**. Ce lien ne change jamais : il donne toujours la dernière version. Si Safari demande s'il peut autoriser les téléchargements depuis ce site, acceptez.
+2. Le fichier `JobScout-Mac.dmg` arrive dans votre dossier Téléchargements (Finder › **Téléchargements**).
+
+C'est réussi si Téléchargements contient `JobScout-Mac.dmg`. Le fichier est le même pour un Mac à puce Apple et pour un Mac Intel.
+
+> **Facultatif, pour les plus prudents** : la [page des versions](https://github.com/latenightsbeats1208-pixel/jobscout/releases/latest) publie aussi `SHA256SUMS.txt`, l'empreinte du fichier. Dans le Terminal, la commande `shasum -a 256 ~/Downloads/JobScout-Mac.dmg` doit afficher la même suite de chiffres et de lettres que ce fichier. Si elle est différente, n'ouvrez pas le fichier : mettez-le à la Corbeille et retéléchargez-le.
+
+### Glisser JobScout dans Applications
+
+1. Dans Téléchargements, double-cliquez sur `JobScout-Mac.dmg`. macOS peut d'abord l'examiner un moment, puis il ouvre une fenêtre qui contient trois éléments : **JobScout**, un raccourci vers le dossier **Applications**, et **LISEZ-MOI.txt**.
+2. Dans cette fenêtre, glissez l'icône **JobScout** sur le dossier **Applications**, puis attendez la fin de la copie.
+3. **N'ouvrez pas JobScout depuis cette fenêtre.** Il vous demanderait d'abord de le glisser dans Applications (« Glissez d'abord JobScout dans Applications »).
+4. Fermez la fenêtre, puis éjectez le disque : dans la barre latérale du Finder, cliquez sur le bouton d'éjection ⏏ à côté de « JobScout » suivi du numéro de version (par exemple « JobScout 3.4.18 »). Vous pouvez ensuite mettre `JobScout-Mac.dmg` à la Corbeille.
+
+C'est réussi si le dossier Applications (Finder › **Applications**) contient JobScout.
+
+Une version de JobScout est déjà dans Applications ? Voir « [À chaque nouvelle version](#à-chaque-nouvelle-version) ».
+
+### Premier lancement : autoriser JobScout (une fois par version)
+
+JobScout est gratuit et son code est public, mais il n'est pas enregistré auprès d'Apple (une inscription payante) : macOS bloque sa première ouverture, puis vous laisse l'autoriser. N'accordez cette autorisation qu'à un fichier téléchargé par le lien de ce guide.
+
+**macOS 15 Sequoia, 26 Tahoe et plus récents**
+
+1. Dans Applications, double-cliquez sur JobScout. Un message indique qu'Apple n'a pas pu vérifier que JobScout ne contient pas de logiciel malveillant. Cliquez sur **OK** (ou **Terminé**), pas sur « Placer dans la corbeille ».
+2. Menu Pomme › **Réglages Système**, puis **Confidentialité et sécurité** dans la colonne de gauche.
+3. Faites défiler jusqu'à **Sécurité** et cliquez sur **Ouvrir quand même**. Le bouton reste environ une heure après votre double-clic ; s'il n'apparaît pas, refaites l'étape 1.
+4. Confirmez par **Ouvrir quand même** (ou **Ouvrir**), saisissez le mot de passe de votre session (ou utilisez Touch ID), puis **OK**.
+5. La fenêtre « JobScout démarre… » s'affiche, puis le navigateur s'ouvre.
+
+**macOS 13 Ventura et 14 Sonoma** : dans Applications, cliquez sur JobScout en maintenant la touche control (⌃) enfoncée, ou faites un clic droit, choisissez **Ouvrir**, puis cliquez sur **Ouvrir** dans le message. Le chemin par les Réglages Système, décrit ci-dessus, fonctionne aussi.
+
+**macOS 11 Big Sur et 12 Monterey** : le même geste (control-clic › **Ouvrir** › **Ouvrir**), ou bien **Préférences Système** › **Sécurité et confidentialité** › **Général** › **Ouvrir quand même**.
+
+Après chaque mise à jour, macOS redemande cette autorisation une fois. Si vous l'avez déjà donnée depuis la fenêtre du disque téléchargé, macOS peut la redemander pour la copie placée dans Applications : refaites alors ces étapes.
+
+**Ce que vous voyez ensuite** : une petite fenêtre « JobScout démarre… » compte les secondes, et l'icône de JobScout dans le Dock porte un badge « … ». Au premier démarrage, la fenêtre peut indiquer « Le premier démarrage peut prendre jusqu'à une minute : macOS vérifie l'application. » : patientez. Elle affiche ensuite « JobScout est prêt », et votre navigateur s'ouvre sur **http://127.0.0.1:3477**.
+
+C'est réussi si JobScout s'affiche dans le navigateur, avec l'assistant de premier réglage.
+
+- macOS demande d'autoriser JobScout à accepter des connexions entrantes ? Vous pouvez refuser : JobScout n'écoute que sur votre Mac (adresse `127.0.0.1`), jamais sur le réseau.
+- macOS demande si JobScout peut trouver des appareils sur votre réseau local ? Refusez, sauf si votre IA locale tourne sur un autre appareil de votre réseau.
+
+### Premier réglage et premier scan
+
+La suite se passe dans le navigateur, exactement comme avec l'autre méthode : suivez l'[étape 5 (premier réglage)](#étape-5--premier-réglage) puis l'[étape 6 (premier scan)](#étape-6--premier-scan), plus bas dans ce guide. Trois différences :
+
+- ignorez tout ce qui concerne le Terminal et `caffeinate` : l'application n'en a pas besoin, et elle garde le Mac éveillé tant qu'elle est ouverte ;
+- vos CV et lettres générés vont par défaut dans le sous-dossier `documents` du [dossier de données](#les-données-de-lapplication). Pour un dossier plus facile à trouver, tapez par exemple `~/Documents/JobScout` dans **Profil › Dossier des documents**, puis cliquez sur **Enregistrer** : macOS demande alors si JobScout peut accéder à votre dossier Documents, acceptez. Si iCloud synchronise vos Documents, vos CV y seront copiés ;
+- l'adresse de JobScout est http://127.0.0.1:3477, et non http://127.0.0.1:3000.
+
+> **En vidéo** : le [tutoriel 2 — Mise en place](https://youtu.be/gOMQkcsD6LA) et le [tutoriel 3 — Utilisation](https://youtu.be/45uLxsWXXLQ?t=10) ont été tournés sous Windows, avec l'autre méthode ; ce qu'ils montrent dans le navigateur vaut pour l'application.
+
+### Utiliser l'application au quotidien
+
+- **Ouvrir JobScout** : double-cliquez sur JobScout dans Applications, ou tapez ⌘ + Espace, `JobScout`, puis Entrée. Le navigateur s'ouvre sur JobScout au bout de quelques secondes. Pour l'avoir sous la main, gardez-le dans le Dock : pendant qu'il est ouvert, faites un control-clic sur son icône dans le Dock › **Options** › **Garder dans le Dock**.
+- **JobScout est déjà ouvert ?** Un nouveau double-clic, ou un clic sur son icône dans le Dock, rouvre sa fenêtre et le navigateur sur JobScout. Il n'en démarre jamais un second.
+- **Fermer la fenêtre de JobScout ou l'onglet du navigateur n'arrête pas JobScout.** Pour y revenir : menu JobScout › **Ouvrir JobScout** (⌘O), ou un clic sur son icône dans le Dock.
+- **Arrêter JobScout** : cliquez sur son icône dans le Dock, puis menu **JobScout** (en haut à gauche de l'écran, à côté de la pomme) › **Quitter JobScout** (⌘Q). Autre geste : control-clic sur son icône dans le Dock › **Quitter**. Le serveur et le moteur LinkedIn s'arrêtent avec lui ; vos données sont conservées. Attention : ⌘Q tapé dans le navigateur ferme le navigateur, pas JobScout.
+- **Le Mac reste éveillé tant que JobScout est ouvert**, ce qui protège les scans de la mise en veille. Quittez JobScout quand vous ne vous en servez pas, surtout sur batterie. Sur un portable, ne fermez pas le capot pendant un scan : un MacBook fermé se met en veille quand même, et la veille coupe le scan.
+- **Quand JobScout est fermé, rien ne tourne en arrière-plan** : pas de scan automatique, pas de connexion, aucun service installé.
+- **L'adresse** est en général http://127.0.0.1:3477. Si un autre programme utilise déjà ce port, JobScout prend le suivant (3478, 3479…), ouvre le navigateur à la bonne adresse et l'affiche dans sa fenêtre.
+
+Le menu **JobScout** contient aussi :
+
+| Menu | Effet |
+|---|---|
+| **Ouvrir JobScout** (⌘O) | ouvre JobScout dans votre navigateur |
+| **Dossier de données** | ouvre le dossier de vos données dans le Finder |
+| **Journal du serveur** | ouvre le journal dans l'application Console, utile en cas de problème |
+| **Page des versions** | ouvre la page des versions de JobScout dans votre navigateur |
+| **À propos de JobScout** | affiche la version installée |
+
+Le control-clic sur l'icône du Dock propose aussi **Ouvrir JobScout**, **Dossier de données** et **Journal du serveur**.
+
+### À chaque nouvelle version
+
+JobScout ne vérifie pas tout seul s'il existe une nouvelle version. Pour le savoir, ouvrez la page des versions : menu JobScout › **Page des versions**, ou directement la [page des versions](https://github.com/latenightsbeats1208-pixel/jobscout/releases) du dépôt. Votre version est indiquée dans menu JobScout › **À propos de JobScout**, et en bas de la barre latérale de JobScout dans le navigateur.
+
+Pour mettre à jour :
+
+1. Quittez JobScout (menu JobScout › **Quitter JobScout**, ⌘Q).
+2. Téléchargez de nouveau `JobScout-Mac.dmg`, par le [même lien](#télécharger-lapplication).
+3. Ouvrez-le et glissez JobScout sur le dossier Applications. Le Finder signale qu'un élément nommé « JobScout » existe déjà : choisissez **Remplacer**.
+4. Ouvrez JobScout depuis Applications. macOS redemande l'autorisation, une fois, comme au [premier lancement](#premier-lancement--autoriser-jobscout-une-fois-par-version).
+
+Vos données ne sont pas dans l'application : la remplacer ne touche ni à votre profil, ni à vos offres, ni à vos documents, ni au moteur LinkedIn.
+
+### Les données de l'application
+
+Toutes vos données sont dans un seul dossier de votre Mac : `~/Library/Application Support/JobScout` (`~` désigne votre dossier personnel, par exemple `/Users/marie`). Pour l'ouvrir : menu JobScout › **Dossier de données**. Si JobScout est fermé : dans le Finder, menu **Aller › Aller au dossier** (Maj + ⌘ + G), tapez `~/Library/Application Support/JobScout`, puis Entrée. Le dossier Bibliothèque (`Library`) est masqué par défaut dans le Finder : c'est normal.
+
+| Dans ce dossier | Contenu |
+|---|---|
+| `jobscout.db` (avec `jobscout.db-wal` et `jobscout.db-shm`) | la base : profil, texte du CV, offres, candidatures, réglages, **et vos clés API, en clair** |
+| `documents` | les CV et lettres générés, sauf si vous avez choisi un autre dossier dans Profil |
+| `browsers` | le moteur LinkedIn, si vous l'installez (exclu des sauvegardes Time Machine) |
+| `ocr` | les modèles de lecture des CV en image, si vous en importez un |
+| `logs` | le journal du serveur : `server.log` (lancement en cours) et `server.previous.log` (lancement précédent) |
+| `runtime.json`, `launcher.lock` | l'état de JobScout pendant qu'il tourne (adresse locale, numéros de processus) |
+
+- Ce dossier n'est accessible qu'à votre compte macOS.
+- **Sauvegarder** : quittez JobScout, puis copiez ce dossier, par exemple sur un disque externe (le sous-dossier `browsers` peut être omis : il se réinstalle). Time Machine le sauvegarde déjà, sauf `browsers`. Il contient votre CV, vos candidatures et vos clés API en clair : gardez cette copie pour vous, hors d'un dossier synchronisé en ligne.
+- **Le journal** peut contenir des extraits de vos documents : relisez-le avant de le partager, et ne le collez jamais en entier dans une issue.
+
+### Désinstaller l'application
+
+1. Quittez JobScout (⌘Q). Gardez une copie du dossier de données si vous voulez conserver vos candidatures.
+2. Dans le Finder, ouvrez Applications et mettez **JobScout** à la Corbeille. Vos données restent en place : vous pouvez réinstaller JobScout sans rien perdre.
+3. Pour effacer aussi vos données : Finder › **Aller › Aller au dossier** (Maj + ⌘ + G), tapez `~/Library/Application Support`, puis Entrée, et mettez le dossier **JobScout** à la Corbeille. Il contient la base (clés API comprises), les documents, le moteur LinkedIn, les modèles OCR et les journaux.
+4. Si vous aviez choisi un autre **dossier des documents** (Profil › Dossier des documents), mettez-le aussi à la Corbeille, ainsi que vos exports Excel des candidatures (dans Téléchargements).
+5. Si le fichier `fr.jobscout.app.plist` existe dans `~/Library/Preferences` (même menu Aller au dossier), mettez-le à la Corbeille : c'est un fichier de réglages que macOS peut créer pour l'application.
+6. Videz la Corbeille : jusque-là, les fichiers restent sur le disque.
+
+JobScout n'installe ni service d'arrière-plan ni ouverture automatique à la connexion : il n'y a rien d'autre à retirer. Si vous aviez installé Ollama pour JobScout, suivez la [désinstallation complète du guide de l'IA](GUIDE-IA.md#lenteur-place-mise-à-jour-et-désinstallation-sur-mac). Détail : [politique de confidentialité, 9.2](CONFIDENTIALITE.md#92-tout-effacer).
+
+### Problèmes fréquents avec l'application
+
+| Ce que vous voyez | Solution |
+|---|---|
+| Au premier lancement, un message indique qu'Apple n'a pas pu vérifier que JobScout ne contient pas de logiciel malveillant | C'est attendu, une fois par version : cliquez sur **OK** (ou **Terminé**), jamais sur « Placer dans la corbeille », puis suivez « [Premier lancement](#premier-lancement--autoriser-jobscout-une-fois-par-version) ». |
+| Pas de bouton **Ouvrir quand même** dans Réglages Système › Confidentialité et sécurité | Il n'apparaît que pendant environ une heure après une ouverture bloquée. Double-cliquez de nouveau sur JobScout dans Applications, cliquez sur **OK**, puis revenez dans Confidentialité et sécurité et faites défiler jusqu'à **Sécurité**. |
+| Vous avez cliqué sur « Placer dans la corbeille » | Rien de grave : vos données ne sont pas touchées. Retéléchargez `JobScout-Mac.dmg`, glissez de nouveau JobScout dans Applications, puis suivez « [Premier lancement](#premier-lancement--autoriser-jobscout-une-fois-par-version) ». |
+| macOS indique que JobScout est endommagé | Le fichier téléchargé est probablement incomplet. Mettez JobScout et `JobScout-Mac.dmg` à la Corbeille, retéléchargez le fichier, puis recommencez. Si le message revient, signalez-le dans une issue, avec votre version de macOS et votre puce. |
+| « Glissez d'abord JobScout dans Applications » | JobScout a été ouvert depuis la fenêtre du disque téléchargé, ou depuis un emplacement temporaire. Cliquez sur **Ouvrir le dossier Applications**, glissez-y JobScout depuis la fenêtre du disque, puis ouvrez-le depuis Applications. |
+| « L'application est incomplète. Retéléchargez JobScout. » | Une partie de l'application manque. Mettez JobScout à la Corbeille, retéléchargez `JobScout-Mac.dmg` et glissez de nouveau JobScout dans Applications. Vos données ne sont pas touchées. |
+| « JobScout ne peut pas écrire dans son dossier de données », suivi d'un chemin | Le disque est peut-être plein : libérez de la place, puis relancez JobScout. Si le message revient, ouvrez une issue avec ce message, en remplaçant votre nom d'utilisateur dans le chemin. |
+| « JobScout n'a pas pu démarrer », « JobScout met trop de temps à démarrer » ou « JobScout s'est arrêté de façon inattendue » | Cliquez sur **Ouvrir le journal** : ses dernières lignes indiquent la cause. Relancez JobScout. Si le problème revient, ouvrez une issue avec ces dernières lignes, relues pour en retirer toute donnée personnelle. |
+| La fenêtre affiche « Le premier démarrage peut prendre jusqu'à une minute » | C'est normal au premier lancement : macOS vérifie l'application. Patientez. |
+| Le navigateur ne s'est pas ouvert, ou vous avez fermé l'onglet | Cliquez sur l'icône de JobScout dans le Dock, ou menu JobScout › **Ouvrir JobScout** (⌘O). L'adresse est affichée dans la fenêtre de JobScout (en général http://127.0.0.1:3477). |
+| « Safari ne parvient pas à se connecter au serveur » sur http://127.0.0.1:3477 | JobScout n'est pas ouvert : ouvrez-le depuis Applications. S'il est ouvert, vérifiez l'adresse affichée dans sa fenêtre : le port peut être 3478 ou un suivant. |
+| Safari affiche un avertissement sur une connexion non sécurisée, ou refuse la page | Tapez l'adresse complète avec `http://`. Si Safari bloque encore, utilisez Chrome ou Firefox, ou désactivez dans Safari › Réglages › **Sécurité** l'avertissement avant les sites en HTTP. JobScout ne fonctionne qu'en `http://`, sur votre Mac seulement. |
+| ⌘Q a fermé le navigateur, pas JobScout | ⌘Q quitte l'application au premier plan. Cliquez d'abord sur l'icône de JobScout dans le Dock, puis tapez ⌘Q. |
+| JobScout tourne toujours après la fermeture de sa fenêtre | C'est voulu : fermer la fenêtre ou l'onglet n'arrête rien. Pour l'arrêter : menu JobScout › **Quitter JobScout** (⌘Q). |
+| Le Mac ne se met plus en veille tout seul | C'est voulu tant que JobScout est ouvert : cela protège les scans. Quittez JobScout quand vous ne vous en servez pas. |
+| macOS demande si JobScout peut accéder à vos fichiers de Documents ou du Bureau, ou « Impossible de créer le dossier » dans Profil › Dossier des documents | Vous avez choisi un dossier des documents à cet endroit : acceptez l'accès. Si vous l'aviez refusé : Réglages Système › Confidentialité et sécurité › **Fichiers et dossiers** › JobScout, et activez le dossier concerné. Vous pouvez aussi garder le dossier par défaut (bouton **Réinitialiser**, s'il est affiché). |
+| macOS demande d'autoriser JobScout à accepter des connexions entrantes | Vous pouvez refuser : JobScout n'écoute que sur votre Mac. |
+| LinkedIn ne renvoie rien | Installez le moteur LinkedIn (Profil › Recherche › Sources). Il demande macOS 12 ou plus récent. Si LinkedIn bloque temporairement, relancez le scan plus tard : les autres sources ne sont pas concernées. |
+| Les données d'une installation depuis le code source n'apparaissent pas | C'est normal : l'application a son propre dossier de données. Celles de l'autre méthode restent dans `jobscout/data`. |
+| macOS refuse d'ouvrir JobScout à cause de votre version de macOS | L'application demande macOS 11 Big Sur ou plus récent. Sur un Mac plus ancien, JobScout ne s'installe pas, quelle que soit la méthode. |
+| Le lien de téléchargement mène à une page d'erreur | Ouvrez la [page des versions](https://github.com/latenightsbeats1208-pixel/jobscout/releases) et prenez `JobScout-Mac.dmg` dans la version la plus récente. Si aucune version ne propose ce fichier, l'application n'est pas encore publiée : prenez [l'autre méthode](#lautre-méthode--depuis-le-code-source-terminal). |
+| La clé API est refusée, « Modèle introuvable », messages de l'IA locale | Voir le [guide de l'IA, section 6](GUIDE-IA.md#6-problèmes-fréquents). |
+
+Une question, un bug ? Ouvrez une *issue* sur le [dépôt GitHub](https://github.com/latenightsbeats1208-pixel/jobscout/issues), en précisant votre version de macOS, votre puce (Apple ou Intel) et la version de JobScout (menu JobScout › **À propos de JobScout**), sans jamais y coller votre CV, une clé ni votre journal entier : les issues sont publiques.
+
+## L'autre méthode : depuis le code source (Terminal)
+
+Cette méthode installe JobScout à partir de son code source, avec le Terminal : Node.js d'abord, puis le code et ses dépendances. Elle convient si vous voulez suivre le code de près ou le modifier. Pour un usage ordinaire, [l'application JobScout pour Mac](#la-méthode-simple--lapplication-jobscout-pour-mac-recommandée) est plus simple.
+
+> Cette partie a été écrite à partir du code de JobScout et de la documentation officielle d'Apple, de Node.js et de Playwright. Son parcours (installation des dépendances, démarrage, moteur LinkedIn, lanceur) est rejoué automatiquement à chaque modification de JobScout sur des Mac de test de GitHub, à puce Apple et Intel. Les noms des boutons de macOS peuvent varier un peu selon votre version. Les durées marquées « sous Windows » n'ont pas été mesurées sur un Mac.
+
+### En bref
 
 | | |
 |---|---|
@@ -16,7 +196,7 @@ Ce guide est la version Mac du [guide d'installation](INSTALL.md). Il s'adresse 
 | **Coût** | JobScout est gratuit. L'IA en ligne est facturée par votre fournisseur, sur votre clé (avec Claude, environ 0,12 à 0,20 $ par dossier CV + lettre) ; elle est gratuite avec un modèle local. Le scan et le tri des offres sont gratuits. |
 | **Où vont vos données** | profil, offres, documents, candidatures et clés API restent sur votre Mac, dans le dossier `jobscout/data`. Pour lire votre CV et rédiger, JobScout envoie le texte du CV, votre profil et l'offre au fournisseur d'IA choisi, ou à aucun avec un modèle local. Pendant un scan, les sites d'offres reçoivent vos mots-clés, vos pays cibles et votre adresse IP. L'éditeur de JobScout ne reçoit rien. Détail : [politique de confidentialité](CONFIDENTIALITE.md). |
 
-### Votre version de macOS
+#### Votre version de macOS
 
 Menu Pomme › **À propos de ce Mac** : le nom et le numéro de macOS s'affichent (par exemple « macOS Sonoma 14.5 »).
 
@@ -30,7 +210,7 @@ Menu Pomme › **À propos de ce Mac** : le nom et le numéro de macOS s'affiche
 
 Node 24 demande macOS 13.5 ou plus récent. Node 22 fonctionne dès macOS 11 et reste maintenu jusqu'au 30 avril 2027.
 
-## Combien de temps ça prend ?
+### Combien de temps ça prend ?
 
 Les durées « sous Windows » ont été mesurées le 30/09/2026 sur un PC Windows 11 relié à la fibre. Avec une connexion plus lente, l'étape 3 peut prendre quelques minutes de plus.
 
@@ -44,7 +224,7 @@ Les durées « sous Windows » ont été mesurées le 30/09/2026 sur un PC Windo
 | 6. Premier scan des offres | environ 1 à 3 minutes avec France Travail seule, le réglage par défaut (estimation d'après les plafonds du code : 50 offres au plus) ; **10 à 20 min** si vous activez d'autres sources (mesuré sous Windows en 3.4.10 : 17 min pour environ 790 offres avec 6 sources, dont la moitié pour LinkedIn) | **non**, JobScout travaille seul |
 | Moteur LinkedIn (facultatif) | 6 s sur puce Apple et 10 s sur Intel sur les Mac de test de GitHub (connexion de centre de données, mesuré le 08/10/2026) ; chez vous, 1 à 2 minutes (mesuré sous Windows) | non |
 
-### Faut-il laisser le Mac allumé ?
+#### Faut-il laisser le Mac allumé ?
 
 - **Pendant l'installation (étape 3) et pendant un scan (étape 6)** : oui. Le Mac ne doit pas se mettre en veille. Vous pouvez continuer à vous en servir normalement.
 - **Le plus simple : `caffeinate`.** Ce guide lance JobScout avec `caffeinate -i npm run dev` (étape 4). Tant que JobScout tourne, le Mac ne se met pas en veille tout seul. Pour l'installation, `caffeinate -i npm ci` fait de même (étape 3). Rien à installer, rien à régler, rien à défaire : l'outil fait partie de macOS. Le [lanceur Mac](#le-lanceur-mac) le fait pour vous.
@@ -54,7 +234,7 @@ Les durées « sous Windows » ont été mesurées le 30/09/2026 sur un PC Windo
 - **Si le Mac se met en veille pendant un scan**, le scan s'interrompt : relancez-le depuis la page Offres.
 - **Quand JobScout est fermé, rien ne tourne en arrière-plan** : pas de scan automatique, pas de connexion.
 
-## Ce qu'il vous faut
+### Ce qu'il vous faut
 
 - **Un Mac** sous macOS 11 ou plus récent (13.5 ou plus recommandé, voir le [tableau des versions](#votre-version-de-macos)), avec 8 Go de mémoire de préférence (4 Go minimum) et **environ 1 Go d'espace disque libre** (plus environ 210 Mo si vous activez LinkedIn : 206 Mo mesurés sur puce Apple, 208 Mo sur Intel).
 - **Le mot de passe de votre session Mac**, celui qui déverrouille l'écran. L'installeur de Node.js le demande. Votre compte n'est pas administrateur ? Il faudra le nom et le mot de passe d'un compte administrateur de ce Mac.
@@ -63,7 +243,7 @@ Les durées « sous Windows » ont été mesurées le 30/09/2026 sur un PC Windo
 - **Votre CV** en PDF, Word (`.docx`), texte (`.txt`) ou image PNG ou JPEG. Un CV écrit dans **Pages**, une photo **HEIC** prise avec un iPhone ou un fichier **TextEdit** (`.rtf`) n'est pas accepté : exportez-le d'abord en PDF (voir « [Problèmes fréquents](#problèmes-fréquents) »).
 - **Un navigateur** : Safari, Chrome ou Firefox.
 
-### Le Terminal et les touches du Mac
+#### Le Terminal et les touches du Mac
 
 Le **Terminal** est une application de macOS dans laquelle on tape des commandes. Pour l'ouvrir : **⌘ + Espace** (la recherche Spotlight s'ouvre), tapez `Terminal`, puis Entrée. Autre chemin : Finder › Applications › Utilitaires › Terminal.
 
@@ -87,7 +267,7 @@ C'est l'**invite**. `~` veut dire que vous êtes dans votre dossier personnel ; 
 
 Le [guide de l'IA](GUIDE-IA.md) montre les gestes de Windows, mais signale chaque différence par « Sur Mac » et décrit pas à pas Ollama ([étapes M1 à M7](GUIDE-IA.md#sur-mac--ollama-de-bout-en-bout)) et [LM Studio](GUIDE-IA.md#sur-mac--lm-studio) sur Mac. Ailleurs dans ce guide : « PowerShell » se lit « Terminal », « Ctrl + V » se lit ⌘V, « Ctrl + A » se lit ⌘A, « Suppr » se lit ⌫, et « menu Démarrer » se lit ⌘ + Espace.
 
-## Étape 1 — Installer Node.js
+### Étape 1 — Installer Node.js
 
 Node.js est le moteur qui fait tourner JobScout. Sur Mac, on l'installe avec l'installeur officiel, un fichier `.pkg`, comme un logiciel ordinaire. Le même fichier sert aux Mac à puce Apple et aux Mac Intel.
 
@@ -112,7 +292,7 @@ C'est réussi si la première réponse commence par `v24.` (par exemple `v24.21.
 
 > **En vidéo** : la vérification est montrée à [0:33 du tutoriel 1](https://youtu.be/cIh4PSmPlKE?t=33), dans une fenêtre Windows ; sur Mac, la commande `node --version` (identique à `node -v`) se tape dans le Terminal. Ignorez le passage juste avant (0:26 à 0:33) : c'est l'installeur Windows.
 
-## Étape 2 — Récupérer JobScout
+### Étape 2 — Récupérer JobScout
 
 JobScout doit finir dans un dossier nommé `jobscout`, **directement dans votre dossier personnel** : `/Users/marie/jobscout` pour une utilisatrice « marie ». Le Terminal l'abrège en `~/jobscout`.
 
@@ -146,7 +326,7 @@ Sur un Mac où Git n'a jamais servi, macOS ouvre d'abord une fenêtre qui propos
 
 > **En vidéo** : les commandes Git sont montrées à [0:39 du tutoriel 1](https://youtu.be/cIh4PSmPlKE?t=39), dans PowerShell ; elles sont identiques sur Mac, mais la vidéo ne montre pas la fenêtre des outils de développement.
 
-## Ouvrir le Terminal dans le dossier jobscout
+### Ouvrir le Terminal dans le dossier jobscout
 
 Les étapes 3 et 4 se font dans le Terminal, **dans le dossier `jobscout`**.
 
@@ -164,7 +344,7 @@ Les étapes 3 et 4 se font dans le Terminal, **dans le dossier `jobscout`**.
 
 Une fenêtre de macOS demande si le Terminal peut accéder à vos fichiers de Documents, du Bureau ou de Téléchargements ? C'est que le dossier `jobscout` n'est pas à sa place : revoyez l'étape 2, point 5. Dans cette fenêtre, cliquez sur le bouton qui accepte l'accès (selon votre version de macOS, il peut s'appeler **OK** ou **Autoriser**) : un refus serait mémorisé. Puis déplacez le dossier et recommencez.
 
-## Étape 3 — Installer les dépendances
+### Étape 3 — Installer les dépendances
 
 Toujours dans le dossier `jobscout` :
 
@@ -190,7 +370,7 @@ Ces messages sont **normaux** et sans conséquence :
 
 > **En vidéo** : cette étape est montrée [à partir de 0:59 du tutoriel 1](https://youtu.be/cIh4PSmPlKE?t=59), avec les messages normaux [à 1:05](https://youtu.be/cIh4PSmPlKE?t=65). Ignorez l'encart orange « npm.cmd » : il ne concerne que Windows.
 
-## Étape 4 — Lancer JobScout
+### Étape 4 — Lancer JobScout
 
 Toujours dans le dossier `jobscout` :
 
@@ -212,7 +392,7 @@ Pour ne plus taper ces commandes chaque jour, créez le [lanceur Mac](#le-lanceu
 
 > **En vidéo** : le lancement et l'adresse sont montrés à [1:18 du tutoriel 1](https://youtu.be/cIh4PSmPlKE?t=78), le terminal à garder ouvert à [1:34](https://youtu.be/cIh4PSmPlKE?t=94). Le « Ctrl + C » de la vidéo est, sur Mac, la touche control (⌃), pas ⌘.
 
-## Étape 5 — Premier réglage
+### Étape 5 — Premier réglage
 
 Comptez 5 à 10 minutes (durée relevée sous Windows). Tout se passe dans le navigateur, exactement comme sous Windows. L'assistant s'ouvre tout seul, en trois étapes : **Importer**, **Vérifier**, **Préférences**.
 
@@ -229,7 +409,7 @@ Comptez 5 à 10 minutes (durée relevée sous Windows). Tout se passe dans le na
 
 **LinkedIn (facultatif)** : c'est la seule source qui a besoin d'un petit navigateur intégré, et il demande **macOS 12 ou plus récent**. Pour l'activer : cochez **LinkedIn** dans **Profil › Recherche › Sources** : un encadré « Moteur LinkedIn requis » apparaît sous les sources, avec le bouton **Installer le moteur LinkedIn**. Environ 100 Mo à télécharger (96,5 Mo pour une puce Apple, 101,3 Mo pour un Mac Intel), environ 210 Mo sur le disque (206 Mo mesurés sur puce Apple, 208 Mo sur Intel) ; comptez 6 s sur puce Apple et 10 s sur Intel sur les Mac de test de GitHub (connexion de centre de données, mesuré le 08/10/2026) ; chez vous, 1 à 2 minutes (mesuré sous Windows). Le moteur se range dans `jobscout/data/browsers`.
 
-### Une IA locale sur Mac
+#### Une IA locale sur Mac
 
 Une IA locale fait tourner le modèle sur votre Mac : gratuit, et votre CV ne sort pas de l'ordinateur. Elle demande **macOS 14 Sonoma ou plus récent**. Pour un Mac plus ancien, prenez une IA en ligne ([guide de l'IA, section 2](GUIDE-IA.md#2-option-a--une-clé-payante-claude-recommandé)).
 
@@ -256,7 +436,7 @@ Détail : [étape M1 du guide de l'IA](GUIDE-IA.md#étape-m1--vérifier-votre-ma
 
 **LM Studio** ([guide de l'IA, « Sur Mac : LM Studio »](GUIDE-IA.md#sur-mac--lm-studio)) : **puce Apple et macOS 14 obligatoires**, 16 Go de mémoire recommandés ; les Mac Intel ne sont pas pris en charge. Sur Mac, l'onglet Discover s'ouvre avec ⌘2 ; prenez la version **GGUF** (Q4_K_M) plutôt que MLX, non testée avec JobScout. Le serveur se démarre comme sous Windows : onglet **Developer** › **Start server**.
 
-## Étape 6 — Premier scan
+### Étape 6 — Premier scan
 
 > **En vidéo** : le scan, les filtres, les documents et le suivi des candidatures sont montrés dans le [tutoriel 3 — Utilisation, à partir de 0:10](https://youtu.be/45uLxsWXXLQ?t=10), valable sur Mac. La scène d'avant (0:05 à 0:11) relance JobScout dans PowerShell : sur Mac, voir « [Au quotidien](#au-quotidien) ».
 
@@ -280,9 +460,9 @@ Ensuite, sur la fiche d'une offre, **Générer les documents** produit un CV et 
 
 Sur Mac, le dossier des documents s'ouvre dans le **Finder**. Les PDF s'ouvrent dans Aperçu, les fichiers Word dans Pages ou Word. L'export Excel des candidatures arrive dans Téléchargements et s'ouvre avec Numbers ou Excel.
 
-## Le lanceur Mac
+### Le lanceur Mac
 
-Une fois JobScout installé, vous pouvez créer un **lanceur** : un fichier à double-cliquer qui ouvre le Terminal, démarre JobScout en gardant le Mac éveillé (`caffeinate`), puis ouvre http://127.0.0.1:3000 dans votre navigateur dès que JobScout répond.
+Une fois JobScout installé, vous pouvez créer un **lanceur** : un fichier à double-cliquer qui ouvre le Terminal, démarre JobScout en gardant le Mac éveillé (`caffeinate`), puis ouvre http://127.0.0.1:3000 dans votre navigateur dès que JobScout répond. Ce lanceur sert à la méthode par le Terminal : [l'application JobScout pour Mac](#la-méthode-simple--lapplication-jobscout-pour-mac-recommandée) n'en a pas besoin.
 
 **Le créer** (une seule fois) : arrêtez JobScout s'il tourne (⌃C), puis, dans le Terminal, dans le dossier `jobscout` :
 
@@ -307,7 +487,7 @@ Double-cliquez sur « JobScout.command » sur le Bureau (le Finder peut l'affich
 - Le lanceur retient l'emplacement du dossier. Si vous déplacez ou renommez `jobscout`, il affiche « Dossier JobScout introuvable » : remettez le dossier à sa place, ou recréez le lanceur avec `npm run shortcut:mac`.
 - Le lanceur est créé sur votre Mac, pas téléchargé : macOS ne devrait pas le bloquer. Si macOS refuse quand même de l'ouvrir, lancez JobScout par le Terminal (voir « Au quotidien ») ; vous pouvez aussi l'autoriser dans Réglages Système › Confidentialité et sécurité › **Ouvrir quand même**.
 
-## Au quotidien
+### Au quotidien
 
 - **Relancer JobScout** : double-cliquez sur le lanceur. Sans lanceur : ouvrez le Terminal, tapez `cd ~/jobscout` puis `caffeinate -i npm run dev`, et ouvrez http://127.0.0.1:3000.
 - **Arrêter JobScout** : dans le Terminal, **⌃C** (control + C), ou fermez la fenêtre et confirmez.
@@ -324,7 +504,7 @@ Double-cliquez sur « JobScout.command » sur le Bureau (le Finder peut l'affich
   6. **Node.js** : vous pouvez le garder, il ne tourne que quand on s'en sert. Il n'a pas de désinstalleur : ne tentez pas de l'effacer à la main avec `sudo`.
   7. **Ollama**, si vous l'aviez installé pour JobScout : suivez la [désinstallation complète du guide de l'IA](GUIDE-IA.md#lenteur-place-mise-à-jour-et-désinstallation-sur-mac). Mettre Ollama à la Corbeille ne suffit pas : ses modèles (plusieurs Go) restent dans le dossier caché `~/.ollama`.
 
-## Problèmes fréquents
+### Problèmes fréquents
 
 | Ce que vous voyez | Solution |
 |---|---|
@@ -355,7 +535,7 @@ Double-cliquez sur « JobScout.command » sur le Bureau (le Finder peut l'affich
 
 Une question, un bug ? Ouvrez une *issue* sur le [dépôt GitHub](https://github.com/latenightsbeats1208-pixel/jobscout/issues), en précisant votre version de macOS et votre puce (Apple ou Intel), sans jamais y coller votre CV ni une clé : les issues sont publiques.
 
-## Les tutoriels vidéo sur Mac
+### Les tutoriels vidéo sur Mac
 
 Les trois tutoriels ont été **tournés sous Windows**. Tout ce qui se passe dans le navigateur est identique sur Mac. Ce qui se passe dans le système (installer Node.js, décompresser, ouvrir un terminal) ne l'est pas : là, suivez le texte de ce guide.
 
@@ -386,8 +566,9 @@ Les trois tutoriels ont été **tournés sous Windows**. Tout ce qui se passe da
 
 ## Sources
 
-Consultées le 8 octobre 2026.
+Consultées le 8 octobre 2026, sauf mention contraire.
 
+- **Application JobScout pour Mac**, premier lancement (consultées le 21 octobre 2026) : Apple, [ouvrir une app qui n'a pas été vérifiée par Apple](https://support.apple.com/fr-fr/guide/mac-help/mh40616/mac) et [ouvrir des apps en toute sécurité sur votre Mac](https://support.apple.com/fr-fr/102445) · code de JobScout : `installer/mac/` (construction de l'application, lanceur, textes des fenêtres, recette automatique), [notes techniques](installer/mac/README.md).
 - **Node.js** : versions de macOS prises en charge, [Node 22](https://github.com/nodejs/node/blob/v22.x/BUILDING.md) et [Node 24](https://github.com/nodejs/node/blob/v24.x/BUILDING.md) · [calendrier des versions](https://raw.githubusercontent.com/nodejs/Release/main/schedule.json) · [installeur macOS (.pkg)](https://raw.githubusercontent.com/nodejs/node/main/tools/macos-installer/productbuild/distribution.xml.tmpl) · [fichiers de la version 24](https://nodejs.org/dist/latest-v24.x/)
 - **Apple** : [ouvrir le Terminal](https://support.apple.com/guide/terminal/open-or-quit-terminal-apd5265185d-f365-44cb-8b09-71a064a42125/mac) · [glisser un élément dans le Terminal](https://support.apple.com/guide/terminal/drag-items-into-a-terminal-window-trml106/mac) · [raccourcis du Terminal](https://support.apple.com/guide/terminal/keyboard-shortcuts-trmlshtcts/mac) · [zsh, shell par défaut](https://support.apple.com/en-us/102360) · [outils de développement en ligne de commande](https://developer.apple.com/documentation/xcode/installing-the-command-line-tools) · [accès aux fichiers et dossiers](https://support.apple.com/guide/mac-help/control-access-to-files-and-folders-on-mac-mchld5a35146/mac) · [Bureau et Documents dans iCloud Drive](https://support.apple.com/en-us/109344) · [réglages de suspension d'activité](https://support.apple.com/fr-fr/guide/mac-help/mchle41a6ccd/mac) · [suspension d'activité](https://support.apple.com/guide/mac-help/put-your-mac-to-sleep-or-wake-it-mh10330/mac) · [caffeinate (page de manuel)](https://keith.github.io/xcode-man-pages/caffeinate.8.html) · [téléchargements dans Safari](https://support.apple.com/guide/safari/download-items-from-the-web-sfri40598/mac) · [réglages de sécurité de Safari](https://support.apple.com/guide/safari/ibrw1074/mac) · [pare-feu](https://support.apple.com/guide/mac-help/block-connections-to-your-mac-with-a-firewall-mh34041/mac) · [format HEIF/HEIC](https://support.apple.com/en-us/116944)
 - **Git** : [installer Git sur macOS](https://git-scm.com/install/mac)

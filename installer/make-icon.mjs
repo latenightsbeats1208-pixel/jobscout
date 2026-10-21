@@ -9,6 +9,10 @@
 //
 // Dessin : carré arrondi en dégradé bleu nuit → bleu accent, loupe blanche.
 // Rendu en suréchantillonnage ×4 puis moyenné, pour des bords lisses.
+//
+// render() est exporté pour l'icône Mac (installer/mac/make-icns.mjs), qui
+// l'appelle avec une marge plus large ; la marge par défaut garde le .ico
+// identique octet pour octet.
 // ============================================================================
 import fs from "node:fs";
 import path from "node:path";
@@ -23,10 +27,32 @@ const BG_TOP = [17, 24, 39]; // #111827
 const BG_BOTTOM = [37, 99, 235]; // #2563EB
 const FG = [255, 255, 255];
 
-/** Rendu d'une taille en RGBA (Uint8ClampedArray), coordonnées haut→bas. */
-function render(size) {
+/** Marge par défaut, en fraction du côté : celle de jobscout.ico, inchangée. */
+export const DEFAULT_MARGIN = 0.03;
+
+/**
+ * Rendu d'une taille en RGBA (Buffer), coordonnées haut→bas.
+ *
+ * @param {number} size  côté en pixels
+ * @param {{ margin?: number }} [options]
+ *   margin : vide autour du carré arrondi, en fraction du côté, dans [0 ; 0,5[.
+ *   0.03 (défaut) donne l'icône Windows, octet pour octet : ce cas ne passe par
+ *   aucun calcul supplémentaire. Une autre valeur réduit le dessin ENTIER
+ *   (carré, coins, loupe) autour du centre ; 0.1 place le carré dans la grille
+ *   des icônes macOS (environ 820 px sur 1024).
+ * @returns {Buffer}  size × size × 4 octets RGBA
+ */
+export function render(size, { margin = DEFAULT_MARGIN } = {}) {
+  if (typeof margin !== "number" || !Number.isFinite(margin) || margin < 0 || margin >= 0.5) {
+    throw new RangeError(`marge ${margin} hors de [0 ; 0,5[`);
+  }
   const n = size * SS;
   const acc = new Float64Array(size * size * 4);
+  // Échelle du dessin : 1 pour la marge par défaut (chemin d'origine, sans
+  // transformation), sinon homothétie de centre n/2 qui amène le carré de
+  // [3 % ; 97 %] à [margin ; 1 - margin].
+  const k = margin === DEFAULT_MARGIN ? 1 : (1 - 2 * DEFAULT_MARGIN) / (1 - 2 * margin);
+  const half = n / 2;
 
   const r = n * 0.22; // rayon des coins
   const cx = n * 0.435, cy = n * 0.42; // centre de la loupe
@@ -37,7 +63,7 @@ function render(size) {
   const handleHalf = n * 0.055;
 
   const inRounded = (x, y) => {
-    const m = n * 0.03; // marge
+    const m = n * DEFAULT_MARGIN; // marge du dessin de référence (0.03)
     const x0 = m, y0 = m, x1 = n - m, y1 = n - m;
     if (x < x0 || x > x1 || y < y0 || y > y1) return false;
     const dx = Math.max(x0 + r - x, 0, x - (x1 - r));
@@ -58,17 +84,23 @@ function render(size) {
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) {
       let cr = 0, cg = 0, cb = 0, ca = 0;
-      if (inRounded(x + 0.5, y + 0.5)) {
-        const t = y / (n - 1);
+      // Point échantillonné, dans le repère du dessin de référence.
+      let sx = x + 0.5, sy = y + 0.5;
+      if (k !== 1) {
+        sx = half + (sx - half) * k;
+        sy = half + (sy - half) * k;
+      }
+      if (inRounded(sx, sy)) {
+        const t = k === 1 ? y / (n - 1) : Math.min(1, Math.max(0, (sy - 0.5) / (n - 1)));
         cr = BG_TOP[0] + (BG_BOTTOM[0] - BG_TOP[0]) * t;
         cg = BG_TOP[1] + (BG_BOTTOM[1] - BG_TOP[1]) * t;
         cb = BG_TOP[2] + (BG_BOTTOM[2] - BG_TOP[2]) * t;
         ca = 255;
 
-        const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+        const dx = sx - cx, dy = sy - cy;
         const d = Math.sqrt(dx * dx + dy * dy);
         const ring = d <= ringOuter && d >= ringInner;
-        if (ring || onHandle(x + 0.5, y + 0.5)) {
+        if (ring || onHandle(sx, sy)) {
           cr = FG[0]; cg = FG[1]; cb = FG[2];
         }
       }

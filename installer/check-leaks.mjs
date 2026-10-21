@@ -13,12 +13,24 @@
 //   node installer/check-leaks.mjs <dossier> [...]     → contrôle ces dossiers
 //   node installer/check-leaks.mjs --from-db           → (re)génère la liste de
 //        termes locale depuis le profil de la base locale, puis contrôle.
+//   node installer/check-leaks.mjs --home              → cherche aussi le dossier
+//        personnel de cette machine ; --home=<dossier> pour un autre (voir
+//        homeDirNeedles) : build et recette Mac. Code 1 si le dossier est une
+//        racine ou fait moins de 4 caractères.
 //
 // Termes recherchés :
 //   - une liste générique versionnée (voir GENERIC_NEEDLES) ;
 //   - installer/leak-needles.local.txt : identité de l'opérateur, JAMAIS
 //     versionné (il contiendrait justement les données à protéger) ;
+//   - les termes passés par l'appelant (option extraNeedles, ou --home) ;
 //   - des motifs : numéros de téléphone, clés d'API, secrets d'environnement.
+//
+// Les exécutables sont reconnus par leur CONTENU (Mach-O, PE, ELF : voir
+// macho.mjs), pas seulement par leur extension : on y cherche les termes, pas
+// les motifs (un binaire contient toujours des suites de chiffres).
+//
+// Sous GitHub Actions (GITHUB_ACTIONS=true), les journaux sont publics : les
+// termes, extraits et segments de nom trouvés sont masqués (voir mask()).
 //
 // ATTENTION — l'exécutable Inno Setup compresse sa charge utile en LZMA :
 // un grep brut sur le .exe ne prouve RIEN sur son contenu. Le contrôle
@@ -27,8 +39,10 @@
 // test. Le scan du .exe n'attrape que les métadonnées non compressées.
 // ============================================================================
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { isExecutableBinary } from "./macho.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT = path.dirname(HERE);
@@ -83,18 +97,29 @@ const FORBIDDEN_FILES = [
   /(^|[\\/])\.env(\.|$)/i,
   /\.db(-wal|-shm|-journal)?$/i,
   /(^|[\\/])demo-profiles([\\/]|$)/i,
+  // macOS : métadonnées du Finder et fichiers AppleDouble (« ._nom »).
+  /(^|[\\/])\.DS_Store$/i,
+  /(^|[\\/])\._[^\\/]*$/,
+  // Matériel de signature Apple (certificat, clé de notarisation, trousseau)
+  // et listes de termes de l'anti-fuite (elles contiennent l'identité protégée).
+  /\.p12$/i,
+  /\.p8$/i,
+  /\.keychain-db$/i,
+  /(^|[\\/])leak-needles[^\\/]*\.txt$/i,
 ];
 
 /**
  * Extensions à ne PAS scanner en texte : ce sont des binaires tiers légitimes
  * (moteurs de police, images) où un faux positif « numéro de téléphone » est
  * garanti. Leur NOM reste contrôlé, et le contenu est scanné pour les termes
- * d'identité (recherche binaire, ASCII + UTF-16LE).
+ * d'identité (recherche binaire, ASCII + UTF-16LE). Les exécutables sans
+ * extension (Mach-O de macOS) sont reconnus par leur contenu, en plus.
  */
 const BINARY_EXT = new Set([
   ".exe", ".dll", ".node", ".ico", ".png", ".jpg", ".jpeg", ".gif", ".webp",
   ".woff", ".woff2", ".ttf", ".otf", ".afm", ".pfb", ".zip", ".gz", ".br",
   ".wasm", ".pdf", ".docx", ".xlsx", ".traineddata", ".bin", ".pak", ".dat",
+  ".dylib", ".icns", ".dmg", ".car", ".nib",
 ]);
 
 function loadLocalNeedles() {
@@ -120,7 +145,37 @@ const STOPWORDS = new Set([
   "outlook", "yahoo", "linkedin", "https", "http", "www", "com",
 ]);
 
-const mask = (v) => v.slice(0, 2) + "*".repeat(Math.max(1, v.length - 2));
+/** Masque une valeur sensible : ses deux premiers caractères, puis des « * ». */
+export const mask = (v) => {
+  const s = String(v);
+  return s.slice(0, 2) + "*".repeat(Math.max(1, s.length - 2));
+};
+
+/**
+ * Masquage des résultats : par défaut sous GitHub Actions (journaux publics).
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {boolean}
+ */
+export const ciMasking = (env = process.env) => env.GITHUB_ACTIONS === "true";
+
+/**
+ * Formes sous lesquelles un dossier personnel peut apparaître dans un fichier :
+ * telle quelle et, sur macOS et Linux, avec les « / » échappés (« \/ ») ; sous
+ * Windows, avec « \ », « \\ » (JSON) et « / ». Rien pour une racine (« / »,
+ * « C:\ ») ou un chemin de moins de 4 caractères : ce ne serait plus un terme
+ * discriminant.
+ * @param {string} [home]
+ * @returns {string[]}
+ */
+export function homeDirNeedles(home = os.homedir()) {
+  const h = String(home ?? "").trim().replace(/[\\/]+$/, "");
+  if (h.length < 4 || /^[A-Za-z]:$/.test(h)) return [];
+  const parts = h.split(/[\\/]/);
+  const forms = h.startsWith("/")
+    ? [parts.join("/"), parts.join("\\/")]
+    : [parts.join("\\"), parts.join("\\\\"), parts.join("/")];
+  return [...new Set(forms)];
+}
 
 /** Régénère la liste locale depuis le profil de la base — valeurs masquées. */
 async function generateLocalNeedles() {
@@ -320,12 +375,52 @@ function haystack(buf) {
   return raw + "\u0000" + buf.toString("utf16le").toLowerCase();
 }
 
-export function checkLeaks(targets, { verbose = true, exclude = [] } = {}) {
+/**
+ * @param {string[]} targets  dossiers ou fichiers à contrôler
+ * @param {{ verbose?: boolean, exclude?: RegExp[], extraNeedles?: Array<string | RegExp>,
+ *           mask?: boolean }} [options]
+ *   extraNeedles : termes ajoutés pour cet appel (dossier personnel de la
+ *                  machine de construction…), cherchés comme ceux de la liste
+ *                  locale ;
+ *   mask         : masquer termes, extraits et segments de nom dans les
+ *                  résultats (défaut : sous GitHub Actions).
+ * @returns {{ findings: Array<{ file: string, kind: string, sample: string }>,
+ *             scanned: number, needleCount: number, executables: number }}
+ *   executables : fichiers reconnus comme Mach-O, PE ou ELF par leur contenu.
+ */
+export function checkLeaks(
+  targets,
+  { verbose = true, exclude = [], extraNeedles = [], mask: masked = ciMasking() } = {}
+) {
   const local = loadLocalNeedles();
-  const needles = [...new Set([...GENERIC_NEEDLES, ...(local ?? [])])];
+  for (const n of extraNeedles) {
+    if (!(n instanceof RegExp) && (typeof n !== "string" || !n.trim())) {
+      throw new Error(`[leaks] terme supplémentaire invalide : ${JSON.stringify(n)}`);
+    }
+  }
+  const extra = extraNeedles.map((n) => (typeof n === "string" ? n.trim() : n));
+  const needles = [...new Set([...GENERIC_NEEDLES, ...(local ?? []), ...extra])];
   const compiled = needles.map(compileNeedle);
   const findings = [];
   let scanned = 0;
+  let executables = 0;
+  // Sous GitHub Actions, rien de ce qui a été trouvé ne s'écrit en clair.
+  const shown = (v) => (masked ? mask(v) : v);
+  // Nom de fichier : on masque les segments qui contiennent le terme, ou tout le
+  // chemin si le terme chevauche plusieurs segments.
+  const shownPath = (rel, c) => {
+    if (!masked) return rel;
+    let hit = false;
+    const out = rel
+      .split(/([\\/])/)
+      .map((seg) => {
+        if (seg === "/" || seg === "\\" || !c.test(seg.toLowerCase())) return seg;
+        hit = true;
+        return mask(seg);
+      })
+      .join("");
+    return hit ? out : mask(rel);
+  };
 
   if (!local && verbose) {
     console.warn(
@@ -355,8 +450,8 @@ export function checkLeaks(targets, { verbose = true, exclude = [] } = {}) {
       for (const c of compiled) {
         if (c.test(relLower)) {
           findings.push({
-            file: rel,
-            kind: `terme « ${c.needle} » dans le NOM`,
+            file: shownPath(rel, c),
+            kind: `terme « ${shown(c.needle)} » dans le NOM`,
             sample: "",
           });
         }
@@ -376,13 +471,17 @@ export function checkLeaks(targets, { verbose = true, exclude = [] } = {}) {
         if (c.test(hay)) {
           findings.push({
             file: rel,
-            kind: `terme « ${c.needle} » dans le CONTENU`,
+            kind: `terme « ${shown(c.needle)} » dans le CONTENU`,
             sample: "",
           });
         }
       }
 
-      if (BINARY_EXT.has(path.extname(file).toLowerCase())) continue;
+      // Exécutable reconnu par son contenu (Mach-O, PE, ELF), quel que soit son
+      // nom — MacOS/node n'a pas d'extension : termes cherchés, motifs non.
+      const executable = isExecutableBinary(buf);
+      if (executable) executables++;
+      if (executable || BINARY_EXT.has(path.extname(file).toLowerCase())) continue;
       if (VENDOR_RE.test(rel)) continue;
       const text = buf.toString("utf-8");
       for (const { label, re } of PATTERNS) {
@@ -392,14 +491,14 @@ export function checkLeaks(targets, { verbose = true, exclude = [] } = {}) {
           findings.push({
             file: rel,
             kind: `motif : ${label}`,
-            sample: m[0].slice(0, 12) + "…",
+            sample: shown(m[0].slice(0, 12)) + "…",
           });
         }
       }
     }
   }
 
-  return { findings, scanned, needleCount: needles.length };
+  return { findings, scanned, needleCount: needles.length, executables };
 }
 
 // ------------------------------- CLI ---------------------------------------
@@ -412,9 +511,23 @@ if (isMain) {
   const resolved = targets.length
     ? targets.map((t) => path.resolve(t))
     : [path.join(HERE, "dist")];
+  // --home : dossier personnel de cette machine ; --home=<dossier> : un autre.
+  const extraNeedles = [];
+  for (const a of args) {
+    if (a !== "--home" && !a.startsWith("--home=")) continue;
+    const home = a === "--home" ? os.homedir() : a.slice("--home=".length);
+    const forms = homeDirNeedles(home);
+    if (!forms.length) {
+      console.error(`[leaks] ÉCHEC : dossier personnel inutilisable comme terme (« ${home} »).`);
+      process.exit(1);
+    }
+    extraNeedles.push(...forms);
+    const show = ciMasking() ? mask : (v) => v;
+    console.log(`[leaks] dossier personnel ajouté aux termes : ${forms.map(show).join(", ")}`);
+  }
 
   console.log(`[leaks] cibles : ${resolved.join(", ")}`);
-  const { findings, scanned, needleCount } = checkLeaks(resolved);
+  const { findings, scanned, needleCount } = checkLeaks(resolved, { extraNeedles });
   console.log(`[leaks] ${scanned} fichiers scannés, ${needleCount} termes recherchés.`);
 
   if (findings.length === 0) {

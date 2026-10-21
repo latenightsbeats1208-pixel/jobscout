@@ -72,7 +72,11 @@ function readVersionFile(): { version?: string; variant?: string } {
   }
 }
 
-/** Version locale : env (posée par le launcher) puis version.json du paquet. */
+/**
+ * Version locale : variable JOBSCOUT_VERSION si elle est définie (aucun lanceur
+ * ne la pose, et le lanceur Mac la retire de l'environnement du serveur), sinon
+ * version.json du dossier de lancement.
+ */
 export function currentVersion(): string {
   if (_current) return _current;
   const fromEnv = process.env.JOBSCOUT_VERSION?.trim();

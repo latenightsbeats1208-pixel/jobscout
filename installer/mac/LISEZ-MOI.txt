@@ -1,0 +1,20 @@
+JobScout {{version}} pour Mac
+
+1. Glissez l'icône JobScout sur le dossier Applications, dans cette fenêtre.
+2. Ouvrez le dossier Applications, puis double-cliquez sur JobScout.
+   N'ouvrez pas JobScout depuis cette fenêtre.
+
+Premier lancement (une fois par version)
+JobScout est gratuit et son code est public, mais il n'est pas enregistré
+auprès d'Apple (inscription payante) : macOS bloque sa première ouverture.
+- Dans le message de macOS, cliquez sur OK (ou Terminé), jamais sur
+  « Placer dans la corbeille ».
+- Menu Pomme > Réglages Système > Confidentialité et sécurité. Descendez
+  jusqu'à « Sécurité », cliquez sur « Ouvrir quand même », confirmez, puis
+  saisissez votre mot de passe de session.
+- Sur macOS 11 à 14 : clic droit (ou control-clic) sur JobScout > Ouvrir > Ouvrir.
+
+Au quotidien : JobScout s'ouvre dans votre navigateur (http://127.0.0.1:3477).
+Pour l'arrêter : menu JobScout > Quitter JobScout (⌘Q).
+Vos données : ~/Library/Application Support/JobScout (menu JobScout > Dossier de données).
+Guide complet : https://github.com/latenightsbeats1208-pixel/jobscout/blob/main/INSTALL-MAC.md

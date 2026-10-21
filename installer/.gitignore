@@ -4,11 +4,17 @@ output/
 vendor/
 launcher/out/
 assets/jobscout.ico
+assets/JobScout.icns
+assets/JobScout.iconset/
 
 # Matériel de signature de code — JAMAIS versionné. Le certificat vit HORS du
 # dépôt ; chemin et mot de passe passent par l'environnement (voir sign.mjs).
+# Mac : certificat Developer ID (.p12), clé de notarisation (.p8), trousseau
+# temporaire (.keychain-db), tous fournis par les secrets du dépôt en CI.
 *.pfx
 *.p12
+*.p8
+*.keychain-db
 *.cer
 *.crt
 *.key

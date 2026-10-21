@@ -59,8 +59,14 @@ function findIscc() {
  * voit qu'au CHARGEMENT de la route concernée (un 500 « Cannot find module »),
  * jamais sur la page d'accueil. C'est ce balayage qui a rattrapé
  * css-tree/data/patch.json, sans lequel tout scan renvoyait 500.
+ *
+ * Exportée pour le démarrage à blanc du build Mac (installer/mac/build-mac.mjs) :
+ * importer ce module n'exécute rien (garde isMain en bas de fichier).
+ *
+ * @param {string} payload  dossier qui contient app/ (installer/dist/JobScout)
+ * @returns {string[]}  routes triées, segments dynamiques remplacés par « 1 »
  */
-function allRoutes(payload) {
+export function allRoutes(payload) {
   const manifestPath = path.join(
     payload,
     "app",

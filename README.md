@@ -12,7 +12,7 @@ Tout tourne sur votre machine : base SQLite locale, serveur limité à `127.0.0.
 
 - **Next.js 15** (App Router) + **React 19** + **TypeScript** + **Tailwind**
 - **IA au choix** — Anthropic Claude (référence : Opus 4.8 pour la rédaction, Sonnet 5 pour la relecture), OpenAI, Google Gemini, Mistral, DeepSeek, Groq, OpenRouter, Ollama et LM Studio en local, ou tout serveur compatible OpenAI. Deux modèles par fournisseur : un de **rédaction** (extraction du CV, CV, lettre, message V.I.E) et un de **relecture** (relecture, traduction anglaise, réparation ciblée de la lettre). Couche commune : `lib/ai/llm.ts` ; catalogue : `lib/ai/providers.ts`.
-- **Tests** : Vitest (`npm test`) et intégration continue GitHub Actions (types, tests, build sur Windows, Linux et macOS à puce Apple avec Node 22, 24 et 26, et sur Mac Intel avec Node 24 ; sur les deux types de Mac, le parcours du [guide Mac](INSTALL-MAC.md) est rejoué : `npm ci`, démarrage, moteur LinkedIn installé puis lancé, lanceur)
+- **Tests** : Vitest (`npm test`) et intégration continue GitHub Actions (types, tests, build sur Windows, Linux et macOS à puce Apple avec Node 22, 24 et 26, et sur Mac Intel avec Node 24 ; sur les deux types de Mac, le parcours du [guide Mac](INSTALL-MAC.md) depuis le code source est rejoué : `npm ci`, démarrage, moteur LinkedIn installé puis lancé, lanceur). L'application Mac est construite puis recettée sur macOS 15 et 26, puce Apple et Intel, à chaque branche `verif/**` et à chaque version (`.github/workflows/installeur-mac.yml`, voir « [Paquet Mac](#paquet-mac) »)
 - **SQLite** intégré (`node:sqlite`, WAL) + fichiers locaux
 - **Scraping** : `fetch` + parsing DOM (`jsdom`) + JSON-LD `JobPosting` ; Playwright uniquement pour LinkedIn
 - **@react-pdf/renderer** + **docx** pour les documents générés ; **xlsx** pour l'import/export des candidatures
@@ -21,7 +21,7 @@ Tout tourne sur votre machine : base SQLite locale, serveur limité à `127.0.0.
 
 > **Première installation ? Suivez le [guide pas à pas](INSTALL.md)** : prérequis, durée de chaque étape (mesurée), messages normaux, ordinateur à laisser allumé ou non, problèmes fréquents.
 >
-> **Sur Mac ? Suivez le [guide Mac](INSTALL-MAC.md)** : les mêmes étapes, avec les gestes du Mac (Terminal, installeur de Node.js, lanceur à double-cliquer).
+> **Sur Mac ? Téléchargez l'[application JobScout pour Mac](https://github.com/latenightsbeats1208-pixel/jobscout/releases/latest/download/JobScout-Mac.dmg)** (`JobScout-Mac.dmg`, un seul fichier pour les Mac à puce Apple et Intel, macOS 11 ou plus récent), puis glissez JobScout dans Applications : ni Terminal ni Node.js à installer. Le [guide Mac](INSTALL-MAC.md) décrit pas à pas le premier lancement (macOS demande une autorisation, une fois par version), puis l'autre méthode : depuis le code source, avec les gestes du Mac (Terminal, installeur de Node.js, lanceur à double-cliquer).
 >
 > En vidéo : [installation](https://youtu.be/cIh4PSmPlKE) · [mise en place](https://youtu.be/gOMQkcsD6LA) · [utilisation](https://youtu.be/45uLxsWXXLQ). Elles ont été tournées sous Windows ; sur Mac, [le guide Mac dit ce qui s'y applique](INSTALL-MAC.md#les-tutoriels-vidéo-sur-mac).
 >
@@ -55,7 +55,7 @@ L'app démarre sur http://127.0.0.1:3000 (écoute limitée à la machine locale,
 
 **LinkedIn (optionnel)** : c'est la seule source qui a besoin d'un navigateur Chromium. Cochez-la dans Profil › Recherche › Sources : l'encadré « Moteur LinkedIn requis » apparaît, cliquez « Installer le moteur LinkedIn » (~100 Mo à télécharger, ~265 Mo sur le disque). En ligne de commande : `npm run playwright:install`.
 
-**Mises à jour** : arrêtez JobScout (`Ctrl + C`), puis `git pull` et `npm ci`.
+**Mises à jour** : arrêtez JobScout (`Ctrl + C`), puis `git pull` et `npm ci`. Avec l'application Mac : [à chaque nouvelle version](INSTALL-MAC.md#à-chaque-nouvelle-version).
 
 **Messages npm normaux** : `npm warn deprecated node-domexception`, « packages are looking for funding », et, avec npm récent, le script d'installation de `tesseract.js` ignoré (il n'affiche qu'un appel aux dons). `npm audit --omit=dev`, qui ne regarde que ce qui tourne réellement, doit afficher `found 0 vulnerabilities` (le PostCSS embarqué par Next.js est forcé en version corrigée via `overrides`). `npm audit` complet signale des failles dans des outils de développement (Tailwind CSS et ses dépendances), sans effet sur l'application. **Ne lancez jamais `npm audit fix --force`** : il installerait Tailwind CSS 4, incompatible.
 
@@ -63,7 +63,13 @@ L'app démarre sur http://127.0.0.1:3000 (écoute limitée à la machine locale,
 
 `npm run package` produit `installer/output/JobScout_Setup_v<version>.exe` : un installeur autonome (Node 22 LTS embarqué, aucune dépendance sur la machine cible), avec launcher natif, données sous `%LOCALAPPDATA%\JobScout` et contrôle anti-fuite de données personnelles bloquant. Voir [`installer/README.md`](installer/README.md).
 
-**Windows uniquement** : la commande a besoin d'Inno Setup 6 (`ISCC.exe`) et embarque un Node pour Windows (`win-x64`). Sur Mac ou Linux, elle échoue après la compilation de Next.js. Sur Mac, JobScout se lance depuis les sources : voir le [guide Mac](INSTALL-MAC.md).
+**Windows uniquement** : la commande a besoin d'Inno Setup 6 (`ISCC.exe`) et embarque un Node pour Windows (`win-x64`). Sur Mac ou Linux, elle échoue après la compilation de Next.js. Le paquet Mac a sa propre chaîne, décrite ci-dessous.
+
+## Paquet Mac
+
+`JobScout-Mac.dmg` contient `JobScout.app`, une application universelle (puce Apple et Intel, macOS 11 ou plus récent) : Node 22 LTS embarqué (les deux binaires officiels, empreintes vérifiées, réunis en un seul), un lanceur natif en Swift (fenêtre d'état, menu JobScout, arrêt de tout le serveur à la fermeture), données sous `~/Library/Application Support/JobScout` et le même contrôle anti-fuite bloquant que le paquet Windows. Il est construit et recetté par GitHub Actions (`.github/workflows/installeur-mac.yml`) : construction sur macOS 15, recette du même fichier sur macOS 15 et 26, puce Apple et Intel. Un tag `v*` posé sur un commit de `main` crée une Release **en brouillon**, publiée ensuite à la main après un essai sur un vrai Mac. Sur un Mac, avec les outils de développement en ligne de commande d'Apple : `node installer/mac/build-mac.mjs`, puis `node installer/mac/make-dmg.mjs` (sorties dans `installer/output/mac/`).
+
+Signature : ad hoc par défaut, d'où l'autorisation que macOS demande au premier lancement de chaque version ([guide Mac](INSTALL-MAC.md#premier-lancement--autoriser-jobscout-une-fois-par-version)). La signature Developer ID et la notarisation d'Apple sont prêtes : elles s'activent avec cinq secrets du dépôt. Voir [`installer/mac/README.md`](installer/mac/README.md).
 
 ## Sources de scan
 
@@ -105,7 +111,7 @@ Page Offres › « Définir ma ville » : choisissez votre ville de référence 
 
 ## Extraction du CV
 
-Cascade selon le type de fichier : PDF (`pdf-parse` ou `pdfjs-dist` multi-colonnes, meilleur retenu), DOCX (`mammoth`), image (`tesseract.js` FR+EN), TXT. Les modèles de reconnaissance d'image (FR, EN) sont téléchargés une fois depuis `cdn.jsdelivr.net`. Puis extraction structurée par le fournisseur d'IA choisi (appel d'outil forcé, ou réponse JSON contrainte selon le fournisseur), validation Zod, score de confiance et **garde-fou anti-hallucination** (suppression des entreprises et compétences non ancrées dans le profil).
+Cascade selon le type de fichier : PDF (`pdf-parse` ou `pdfjs-dist` multi-colonnes, meilleur retenu), DOCX (`mammoth`), image (`tesseract.js` FR+EN), TXT. Les modèles de reconnaissance d'image (FR, EN) sont téléchargés une fois depuis `cdn.jsdelivr.net`, puis gardés dans le sous-dossier `ocr` du dossier de données (jamais dans le dossier de l'application). Puis extraction structurée par le fournisseur d'IA choisi (appel d'outil forcé, ou réponse JSON contrainte selon le fournisseur), validation Zod, score de confiance et **garde-fou anti-hallucination** (suppression des entreprises et compétences non ancrées dans le profil).
 
 ## Génération de documents
 

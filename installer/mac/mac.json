@@ -1,0 +1,27 @@
+{
+  "comment": "Configuration unique du paquet Mac. Info.plist (bundle.mjs), le DMG (make-dmg.mjs) et les tests (tests/installer-mac-config.test.ts) en sont dérivés. bundleIdentifier est figé dès la première publication : ne jamais le changer.",
+  "bundleIdentifier": "fr.jobscout.app",
+  "bundleName": "JobScout",
+  "displayName": "JobScout",
+  "executableName": "JobScout",
+  "iconName": "JobScout",
+  "developmentRegion": "fr",
+  "minimumSystemVersion": "11.0",
+  "applicationCategory": "public.app-category.productivity",
+  "copyright": "JobScout — licence MIT",
+  "dataDirName": "JobScout",
+  "ports": { "first": 3477, "last": 3500 },
+  "dmgName": "JobScout-Mac.dmg",
+  "sumsName": "SHA256SUMS.txt",
+  "reportName": "rapport-construction.json",
+  "urls": {
+    "releases": "https://github.com/latenightsbeats1208-pixel/jobscout/releases/latest",
+    "download": "https://github.com/latenightsbeats1208-pixel/jobscout/releases/latest/download/JobScout-Mac.dmg",
+    "guide": "https://github.com/latenightsbeats1208-pixel/jobscout/blob/main/INSTALL-MAC.md"
+  },
+  "usageDescriptions": {
+    "localNetwork": "JobScout se connecte à une IA locale installée sur un autre appareil de votre réseau, seulement si vous l'avez configurée.",
+    "documentsFolder": "JobScout enregistre vos CV et lettres dans le dossier que vous avez choisi.",
+    "desktopFolder": "JobScout enregistre vos CV et lettres dans le dossier que vous avez choisi."
+  }
+}

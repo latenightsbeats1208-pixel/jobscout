@@ -1,10 +1,10 @@
 # Politique de confidentialité de JobScout
 
-**En vigueur le 21 octobre 2026** · JobScout 3.4.17
+**En vigueur le 21 octobre 2026** · JobScout 3.4.18
 
 Cette politique explique ce que JobScout enregistre sur votre ordinateur, ce qui en sort, vers qui, et comment tout effacer. Les règles d'usage du logiciel sont dans les [conditions d'utilisation](CGU.md).
 
-Elle décrit, au mieux de la connaissance de l'éditeur, le code de JobScout 3.4.17 tel qu'il est publié dans ce dépôt. Elle ne couvre pas les copies modifiées ou redistribuées par d'autres personnes (voir les [conditions d'utilisation](CGU.md), section 3). Une version antérieure peut fonctionner autrement : jusqu'à la 3.4.12, par exemple, `npm run dev` laissait active la télémétrie de Next.js.
+Elle décrit, au mieux de la connaissance de l'éditeur, le code de JobScout 3.4.18 tel qu'il est publié dans ce dépôt, y compris l'application JobScout pour Mac (`JobScout-Mac.dmg`) publiée sur sa page des versions. Elle ne couvre pas les copies modifiées ou redistribuées par d'autres personnes (voir les [conditions d'utilisation](CGU.md), section 3). Une version antérieure peut fonctionner autrement : jusqu'à la 3.4.12, par exemple, `npm run dev` laissait active la télémétrie de Next.js, et jusqu'à la 3.4.17, les modèles de lecture d'image s'enregistraient dans le dossier de lancement du serveur (section 3.2).
 
 ## 1. En bref
 
@@ -33,8 +33,11 @@ Elle décrit, au mieux de la connaissance de l'éditeur, le code de JobScout 3.4
 |---|---|
 | Le code source (clone Git ou ZIP), lancé avec `npm run dev`, `npm run start`, `scripts/Start-JobScout.ps1` ou le lanceur Mac `JobScout.command` (`npm run shortcut:mac`) | `data/` dans le dossier du projet, sauf si vous avez défini un autre emplacement (variables `JOBSCOUT_DATA_DIR`, `JOBSCOUT_DB_PATH` ou `JOBSCOUT_DOCS_PATH`, par exemple dans `.env`) |
 | L'installeur Windows, si vous l'avez construit vous-même (`npm run package`) | `%LOCALAPPDATA%\JobScout`. Le menu « Dossier de données » de l'icône JobScout, près de l'horloge, l'ouvre directement |
+| L'application JobScout pour Mac (`JobScout.app`, installée depuis `JobScout-Mac.dmg`) | `~/Library/Application Support/JobScout`, dans la Bibliothèque de votre dossier personnel, masquée par défaut dans le Finder. La commande « Dossier de données » du menu JobScout l'ouvre directement. Ce dossier n'est accessible qu'à votre compte macOS |
 
 La base de données est le fichier `jobscout.db`, accompagné de `jobscout.db-wal` et `jobscout.db-shm`.
+
+Avec l'installeur Windows et l'application Mac, ce dossier est séparé du programme : remplacer le programme n'y touche pas. Le supprimer non plus, sauf si, sous Windows, vous répondez Oui à la question posée à la fin de la désinstallation (section 9.2).
 
 En version source, `npm run build` (nécessaire avant `npm run start`) recopie dans `.next/standalone/` le contenu de `data/` et le fichier `.env`, tels qu'ils sont au moment de la compilation. Cette copie peut donc contenir votre base, vos clés API comprises, et vos documents.
 
@@ -49,9 +52,10 @@ En version source, `npm run build` (nécessaire avant `npm run start`) recopie d
 - **Les réglages :** fournisseur d'IA, modèles, adresse du serveur pour un modèle local, dossier des documents. Et **vos clés API, en clair**, sans chiffrement.
 - **La ville de référence du filtre par distance**, si vous en choisissez une dans la page Offres : seulement le code de la commune, pas d'adresse. La ville de votre profil vous est proposée, mais elle n'est enregistrée qu'après votre clic.
 - **L'historique des scans :** date, statut et journal de chaque scan.
-- **Le journal du serveur**, avec l'installeur Windows seulement : `logs\server.log`, réécrit à chaque démarrage. Il peut contenir des extraits de vos documents (corrections de la relecture), des noms d'entreprises et de compétences, la quantité de texte traitée par l'IA (en « jetons ») et les erreurs. En version source, ces messages s'affichent dans le terminal : JobScout ne les enregistre pas dans un fichier.
-- **Le moteur LinkedIn**, si vous l'installez : environ 100 Mo à télécharger, 265 Mo sur le disque. Le bouton « Installer le moteur LinkedIn » le range dans le sous-dossier `browsers`. `npm run playwright:install` le range dans le dossier commun de Playwright (`ms-playwright`). JobScout réutilise aussi ce dossier commun s'il y trouve déjà Chromium.
-- **Les modèles de lecture d'image (OCR)**, si vous importez un CV au format image : `fra.traineddata` et `eng.traineddata`, dans le dossier depuis lequel le serveur est lancé. C'est la racine du projet en version source, et le dossier du programme avec l'installeur Windows.
+- **Le journal du serveur**, avec l'installeur Windows et l'application Mac : `logs/server.log`, dans le dossier de données. Sous Windows, il est réécrit à chaque démarrage. Sur Mac, le journal du démarrage précédent est gardé sous le nom `logs/server.previous.log`, puis remplacé au démarrage suivant : les deux derniers lancements restent donc sur le disque. Sur Mac, ces journaux ne sont lisibles que par votre compte. Ils peuvent contenir des extraits de vos documents (corrections de la relecture), des noms d'entreprises et de compétences, la quantité de texte traitée par l'IA (en « jetons ») et les erreurs. En version source, ces messages s'affichent dans le terminal : JobScout ne les enregistre pas dans un fichier.
+- **Le moteur LinkedIn**, si vous l'installez : environ 100 Mo à télécharger, 265 Mo sur le disque. Le bouton « Installer le moteur LinkedIn » le range dans le sous-dossier `browsers`. `npm run playwright:install` le range dans le dossier commun de Playwright (`ms-playwright`). JobScout réutilise aussi ce dossier commun s'il y trouve déjà Chromium. L'application Mac exclut le sous-dossier `browsers` des sauvegardes Time Machine.
+- **Les modèles de lecture d'image (OCR)**, si vous importez un CV au format image : `fra.traineddata` et `eng.traineddata`, dans le sous-dossier `ocr` du dossier de données, quelle que soit la façon dont vous utilisez JobScout. Jusqu'à la 3.4.17, ils étaient enregistrés dans le dossier depuis lequel le serveur était lancé : la racine du projet en version source, le dossier du programme avec l'installeur Windows.
+- **L'état de l'application Mac pendant qu'elle tourne** : `runtime.json` (adresse locale, numéros de processus, version, heure de démarrage), effacé à l'arrêt, et `launcher.lock`, qui empêche d'ouvrir JobScout deux fois. Ils sont dans le dossier de données et ne contiennent aucune donnée sur vous. macOS peut aussi créer de lui-même un fichier de réglages de l'application, `~/Library/Preferences/fr.jobscout.app.plist`.
 - **Le fichier `.env`**, si vous le créez en version source. Il peut contenir des identifiants France Travail ou une clé API de développement, en clair.
 - **Dans votre navigateur :** le thème choisi, clair ou sombre. Pendant l'inscription, le profil extrait est gardé dans la session de l'onglet, puis effacé à la fin de l'étape « Préférences ».
 - **Les exports Excel** de vos candidatures, si vous en téléchargez. Ils sont enregistrés là où votre navigateur range les téléchargements, en général le dossier Téléchargements.
@@ -62,7 +66,7 @@ JobScout ne crée ni compte ni cookie.
 
 JobScout n'envoie rien de lui-même : chaque échange décrit ci-dessous suit une action de votre part. Il n'y a aucun scan automatique. Quand JobScout est fermé, il ne fait rien.
 
-Il y a une exception. Si vous lancez JobScout depuis le code source avec `npm run dev`, ou avec le raccourci `scripts/Start-JobScout.ps1` ou le lanceur Mac `JobScout.command`, qui utilisent cette commande (c'est la méthode des guides d'installation), Next.js vérifie à chaque démarrage s'il existe une version plus récente de lui-même. Pour cela, il interroge le registre npm (`registry.npmjs.org`). Cette requête ne contient aucune donnée de JobScout ni aucune donnée sur vous, mais le registre voit votre adresse IP. `npm run start` et l'installeur Windows ne font pas cette vérification.
+Il y a une exception. Si vous lancez JobScout depuis le code source avec `npm run dev`, ou avec le raccourci `scripts/Start-JobScout.ps1` ou le lanceur Mac `JobScout.command`, qui utilisent cette commande (c'est la méthode des guides d'installation), Next.js vérifie à chaque démarrage s'il existe une version plus récente de lui-même. Pour cela, il interroge le registre npm (`registry.npmjs.org`). Cette requête ne contient aucune donnée de JobScout ni aucune donnée sur vous, mais le registre voit votre adresse IP. `npm run start`, l'installeur Windows et l'application Mac ne font pas cette vérification.
 
 **Le filtre par distance ne fait rien sortir.** La base des communes françaises et des villes du monde est incluse dans le logiciel. Les distances sont calculées sur votre ordinateur : ni votre ville de référence ni le lieu des offres ne sont envoyés à qui que ce soit. Ce filtre n'affiche aucune carte et ne charge aucune ressource extérieure.
 
@@ -132,10 +136,11 @@ Ce cas se présente seulement si vous inscrivez `FT_CLIENT_ID` et `FT_CLIENT_SEC
 Ces téléchargements ne contiennent aucune donnée personnelle, mais le serveur contacté voit votre adresse IP.
 
 - **Moteur LinkedIn :** quand vous cliquez sur « Installer le moteur LinkedIn » ou lancez `npm run playwright:install`. Le téléchargement fait environ 100 Mo (environ 265 Mo une fois installé) et vient des serveurs de Playwright (`cdn.playwright.dev`, `playwright.download.prss.microsoft.com`). Il n'a lieu qu'une fois.
-- **Modèles OCR :** au premier import d'un CV au format image. Les modèles français et anglais viennent de `cdn.jsdelivr.net`. Si JobScout est installé dans un dossier protégé, comme `Program Files`, ces modèles ne peuvent pas être enregistrés : ils sont alors téléchargés à chaque import d'image. L'image de votre CV, elle, reste sur votre ordinateur.
+- **Modèles OCR :** au premier import d'un CV au format image. Les modèles français et anglais viennent de `cdn.jsdelivr.net`. Ils sont ensuite gardés dans le sous-dossier `ocr` du dossier de données, et ne sont plus téléchargés tant que ce dossier existe. L'image de votre CV, elle, reste sur votre ordinateur.
 - **Installation, en version source :** le code vient de GitHub. `npm ci` télécharge les dépendances depuis `registry.npmjs.org`, plus une archive depuis `cdn.sheetjs.com`.
+- **Application Mac :** `JobScout-Mac.dmg` se télécharge depuis la page des versions du dépôt, chez GitHub. Le menu « Page des versions » de JobScout ouvre cette page dans votre navigateur, seulement quand vous le choisissez. L'application ne vérifie jamais d'elle-même s'il existe une nouvelle version.
 
-Les outils qui servent à installer et lancer JobScout (Node.js, npm, Git) peuvent contacter leurs propres serveurs. Ils suivent alors leurs propres règles.
+Les outils qui servent à installer et lancer JobScout (Node.js, npm, Git) peuvent contacter leurs propres serveurs. Ils suivent alors leurs propres règles. De même, au premier lancement d'une application téléchargée, macOS peut la vérifier auprès d'Apple, selon les règles d'Apple.
 
 ### 4.5 Les liens que vous ouvrez
 
@@ -145,9 +150,9 @@ Quand vous ouvrez une annonce ou cliquez sur « Postuler », c'est votre navigat
 
 - **Aucun serveur de l'éditeur.** Rien de ce que vous faites dans JobScout ne lui parvient.
 - **Aucun suivi.** Ni télémétrie, ni mesure d'audience, ni rapport de plantage, ni publicité. L'interface ne charge aucune ressource extérieure : même les polices de caractères et la base géographique du filtre par distance sont incluses dans le logiciel.
-- **Télémétrie de Next.js désactivée.** Next.js envoie par défaut des statistiques d'usage anonymes à son éditeur, Vercel. Depuis la 3.4.13, `npm run dev` et `npm run build` lancent Next.js avec `NEXT_TELEMETRY_DISABLED=1`, et `scripts/Start-JobScout.ps1` comme le lanceur Mac `JobScout.command` passent par `npm run dev`. `npm run start` et l'installeur Windows n'ont pas besoin de ce réglage : Next.js n'envoie ces statistiques qu'en développement et à la compilation. Si vous lancez Next.js autrement, coupez-la vous-même : définissez la variable `NEXT_TELEMETRY_DISABLED=1`, ou lancez une fois `npx next telemetry disable`.
+- **Télémétrie de Next.js désactivée.** Next.js envoie par défaut des statistiques d'usage anonymes à son éditeur, Vercel. Depuis la 3.4.13, `npm run dev` et `npm run build` lancent Next.js avec `NEXT_TELEMETRY_DISABLED=1`, et `scripts/Start-JobScout.ps1` comme le lanceur Mac `JobScout.command` passent par `npm run dev`. `npm run start`, l'installeur Windows et l'application Mac n'ont pas besoin de ce réglage : Next.js n'envoie ces statistiques qu'en développement et à la compilation. L'application Mac lance quand même son serveur avec `NEXT_TELEMETRY_DISABLED=1`. Si vous lancez Next.js autrement, coupez-la vous-même : définissez la variable `NEXT_TELEMETRY_DISABLED=1`, ou lancez une fois `npx next telemetry disable`.
 - **Aucun relais actif.** Le code contient deux fonctions réseau en sommeil : un relais d'IA et une vérification de mise à jour. Elles ne s'activent que si une adresse est fournie dans la variable `JOBSCOUT_PROXY_URL` ou `JOBSCOUT_UPDATE_URL`. La version publiée sur GitHub n'en fournit aucune : ces fonctions n'envoient donc rien. Si vous définissez ces variables vous-même, vos données partent vers l'adresse que vous avez choisie.
-- **Aucune mise à jour automatique.** Vous mettez JobScout à jour vous-même, avec `git pull` ou un nouveau téléchargement.
+- **Aucune mise à jour automatique.** Vous mettez JobScout à jour vous-même, avec `git pull` ou un nouveau téléchargement. L'application Mac ne vérifie pas non plus l'existence d'une nouvelle version.
 - **Aucune vente ni aucun partage.** Par le logiciel, l'éditeur ne détient aucune donnée : il n'a rien à vendre ni à partager.
 
 ## 6. JobScout et le RGPD
@@ -177,6 +182,8 @@ Ce que vous pouvez faire :
 - Protégez votre session par un mot de passe et ne la prêtez pas.
 - Chiffrez votre disque : BitLocker sous Windows, FileVault sous macOS, LUKS sous Linux.
 - Ne partagez pas votre dossier de données. Évitez de placer le projet dans un dossier synchronisé avec un service de stockage en ligne (celui de Microsoft, Dropbox, iCloud Drive, Google Drive…), sinon votre base et vos clés y seraient copiées.
+- Vos sauvegardes (Time Machine sur Mac, par exemple) copient aussi votre dossier de données, clés API comprises : chiffrez-les.
+- Sur un ordinateur partagé entre plusieurs comptes, quittez JobScout quand vous ne vous en servez pas. Pendant qu'il tourne, un programme d'un autre compte ouvert en même temps peut joindre son adresse locale, qui ne demande pas de mot de passe.
 - Ne publiez jamais vos clés. `data/`, `.next/` et `.env` sont exclus de Git par le fichier `.gitignore` : vérifiez-le avant de publier une copie du projet. Si vous la partagez autrement (archive ZIP, clé USB), retirez d'abord ces dossiers et ce fichier. Ne collez jamais de clé, de CV, de base de données ou d'extrait de journal dans une issue.
 - Si votre fournisseur d'IA le permet, fixez un plafond de dépenses. Si une clé fuit, révoquez-la chez lui, puis cliquez sur « Réinitialiser » dans Profil › Paramètres et données › Génération IA.
 
@@ -195,7 +202,7 @@ Vos données restent sur votre ordinateur tant que vous ne les supprimez pas. Jo
 
 - le profil gardé dans l'onglet pendant l'inscription ;
 - les cookies LinkedIn, à la fin de chaque scan ;
-- le journal du serveur, réécrit à chaque démarrage ;
+- le journal du serveur, réécrit à chaque démarrage (sur Mac, celui du démarrage précédent est gardé une fois, sous le nom `server.previous.log`) ;
 - l'ancienne version d'un document, quand vous le régénérez pour la même offre, dans le même format.
 
 ### 9.1 Dans JobScout
@@ -217,11 +224,11 @@ Une valeur effacée peut laisser une trace technique dans le fichier de la base 
 **Version source**
 
 1. Arrêtez JobScout : Ctrl+C dans la fenêtre du terminal où il tourne (sur Mac : touche control + C, pas ⌘). Avec `Start-JobScout.ps1`, cette fenêtre est réduite dans la barre des tâches. Sur Mac, supprimez aussi le lanceur `JobScout.command` du Bureau si vous l'avez créé.
-2. Supprimez le dossier `data/` du projet. Il contient la base, les documents et, si vous l'avez installé avec le bouton de JobScout, le moteur LinkedIn.
+2. Supprimez le dossier `data/` du projet. Il contient la base, les documents, les modèles OCR et, si vous l'avez installé avec le bouton de JobScout, le moteur LinkedIn.
 3. Supprimez aussi, s'ils existent :
    - le dossier `.next/` du projet, si vous avez lancé `npm run build`. Il peut contenir une copie de votre base, de vos documents et de votre fichier `.env` ;
    - le fichier `.env` ;
-   - `fra.traineddata` et `eng.traineddata`, à la racine du projet ;
+   - `fra.traineddata` et `eng.traineddata`, à la racine du projet, si vous avez importé un CV au format image avec une version antérieure à la 3.4.18 ;
    - le dossier de documents, si vous en aviez choisi un autre ;
    - vos exports Excel.
 4. Vous pouvez aussi supprimer tout le dossier du projet.
@@ -236,7 +243,18 @@ Si le moteur LinkedIn se trouve dans le dossier commun `ms-playwright`, ce dossi
 4. Supprimez aussi :
    - le dossier de documents, si vous en aviez choisi un autre ;
    - vos exports Excel ;
-   - le dossier du programme, s'il subsiste : par défaut `%LOCALAPPDATA%\Programs\JobScout`, ou le dossier choisi à l'installation. Si vous avez importé un CV au format image, les modèles OCR peuvent y être restés.
+   - le dossier du programme, s'il subsiste : par défaut `%LOCALAPPDATA%\Programs\JobScout`, ou le dossier choisi à l'installation. Si vous avez importé un CV au format image avec une version antérieure à la 3.4.18, les modèles OCR peuvent y être restés.
+
+**Application Mac**
+
+1. Quittez JobScout : menu JobScout › « Quitter JobScout » (⌘Q). Fermer sa fenêtre ou l'onglet du navigateur ne suffit pas.
+2. Dans le Finder, menu Aller › « Aller au dossier » (Maj + ⌘ + G), tapez `~/Library/Application Support`, puis mettez le dossier `JobScout` à la Corbeille. Il contient la base (**clés API en clair comprises**), les documents, le moteur LinkedIn, les modèles OCR, les journaux et l'état de l'application.
+3. Mettez l'application JobScout, dans le dossier Applications, à la Corbeille. La supprimer seule laisse vos données sur le disque.
+4. Supprimez aussi, s'ils existent :
+   - le dossier de documents, si vous en aviez choisi un autre ;
+   - vos exports Excel ;
+   - le fichier `~/Library/Preferences/fr.jobscout.app.plist`.
+5. Videz la Corbeille. Les sauvegardes Time Machine faites avant gardent une copie de ces fichiers, sauf du moteur LinkedIn.
 
 **Navigateur :** effacez les données du site `127.0.0.1` pour retirer le thème mémorisé.
 
@@ -268,4 +286,4 @@ Le dépôt est hébergé par GitHub. Quand vous le consultez, le clonez, le tél
 
 Cette politique est versionnée avec le code : chaque modification apparaît dans l'historique Git du dépôt. Elle sera mise à jour si le fonctionnement de JobScout change, par exemple si une nouvelle destination de données apparaît. La date indiquée en tête est celle de la version en vigueur.
 
-**Entrée en vigueur :** 21 octobre 2026 (JobScout 3.4.17). Dernière modification : ajout du filtre par distance (3.4.17).
+**Entrée en vigueur :** 21 octobre 2026 (JobScout 3.4.18). Dernière modification : application JobScout pour Mac, et modèles OCR rangés dans le dossier de données (3.4.18).

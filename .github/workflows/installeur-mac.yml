@@ -1,0 +1,225 @@
+name: Installeur Mac
+
+# Construit JobScout-Mac.dmg (une app universelle : puce Apple et Intel) sur un
+# runner macOS à puce Apple, puis recette le MÊME DMG sur quatre Mac (macOS 15
+# et 26, puce Apple et Intel).
+#   - Branche verif/** (ou lancement manuel) : construction et recette, puis
+#     la décision de publication est affichée à blanc. Rien n'est publié.
+#   - Tag v* : construction, recette, puis Release en BROUILLON (JobScout-Mac.dmg
+#     et SHA256SUMS.txt), créée ou complétée avec GITHUB_TOKEN. Une Release déjà
+#     publiée n'est jamais remplacée ; la publication se fait à la main, après
+#     un essai sur un vrai Mac.
+#
+# Ordre imposé par GitHub : GITHUB_TOKEN ne peut pas créer de release pour un
+# commit qui modifie .github/workflows. On fusionne d'abord dans main (ci.yml
+# vert), PUIS on pose le tag.
+#
+# Signature : ad hoc par défaut. Developer ID + notarisation s'activent avec les
+# 5 secrets JOBSCOUT_MAC_* (installer/mac/sign-mac.mjs) ; une configuration
+# partielle fait échouer la construction. Les secrets ne sont passés qu'aux deux
+# étapes qui signent.
+#
+# Observabilité sans compte : chaque étape importante publie ses mesures en
+# ::notice et ses échecs en ::error (fin du journal comprise). Depuis un poste :
+#   node installer/mac/ci-status.mjs <branche | sha>
+#
+# Actions tierces épinglées par SHA (git ls-remote https://github.com/actions/<nom>
+# refs/tags/v4, relevé le 21/10/2026) ; persist-credentials: false partout.
+
+on:
+  push:
+    branches: ["verif/**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: installeur-mac-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  construire:
+    name: Construire JobScout-Mac.dmg
+    runs-on: macos-15
+    timeout-minutes: 45
+    outputs:
+      signature: ${{ steps.signature.outputs.mode }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Système
+        run: |
+          xcode=$(xcodebuild -version 2>/dev/null | sed -n 1p)
+          swift=$(swiftc --version 2>&1 | sed -n 1p)
+          echo "::notice title=Système (construction)::macOS $(sw_vers -productVersion) $(uname -m) — ${xcode} — ${swift} — Node $(node -v)"
+      - name: Cohérence des versions
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: node installer/mac/check-version.mjs
+      - name: Dépendances (npm ci)
+        run: |
+          start=$(date +%s)
+          npm ci --no-audit --no-fund
+          echo "::notice title=npm ci (construction)::$(( $(date +%s) - start )) s"
+      - name: Construire et sceller l'app (aucun secret)
+        # pipefail : sans lui, l'étape prendrait le code de « tee » (0) et un
+        # échec de build-mac.mjs passerait pour un succès.
+        run: |
+          set -o pipefail
+          mkdir -p journal-mac
+          node installer/mac/build-mac.mjs 2>&1 | tee journal-mac/construction.log
+      - name: Signature Developer ID et notarisation (si configurées)
+        env:
+          JOBSCOUT_MAC_CERT_P12_BASE64: ${{ secrets.JOBSCOUT_MAC_CERT_P12_BASE64 }}
+          JOBSCOUT_MAC_CERT_PASSWORD: ${{ secrets.JOBSCOUT_MAC_CERT_PASSWORD }}
+          JOBSCOUT_MAC_NOTARY_KEY_P8_BASE64: ${{ secrets.JOBSCOUT_MAC_NOTARY_KEY_P8_BASE64 }}
+          JOBSCOUT_MAC_NOTARY_KEY_ID: ${{ secrets.JOBSCOUT_MAC_NOTARY_KEY_ID }}
+          JOBSCOUT_MAC_NOTARY_ISSUER_ID: ${{ secrets.JOBSCOUT_MAC_NOTARY_ISSUER_ID }}
+        run: node installer/mac/sign-mac.mjs app
+      - name: Image disque
+        env:
+          JOBSCOUT_MAC_CERT_P12_BASE64: ${{ secrets.JOBSCOUT_MAC_CERT_P12_BASE64 }}
+          JOBSCOUT_MAC_CERT_PASSWORD: ${{ secrets.JOBSCOUT_MAC_CERT_PASSWORD }}
+          JOBSCOUT_MAC_NOTARY_KEY_P8_BASE64: ${{ secrets.JOBSCOUT_MAC_NOTARY_KEY_P8_BASE64 }}
+          JOBSCOUT_MAC_NOTARY_KEY_ID: ${{ secrets.JOBSCOUT_MAC_NOTARY_KEY_ID }}
+          JOBSCOUT_MAC_NOTARY_ISSUER_ID: ${{ secrets.JOBSCOUT_MAC_NOTARY_ISSUER_ID }}
+        run: node installer/mac/make-dmg.mjs
+      # Mode de signature constaté sur l'app livrée (par son contenu, pas par
+      # la présence des secrets) : il choisit le texte des notes de version.
+      - name: Signature constatée
+        id: signature
+        run: |
+          info=$(codesign -dvv installer/output/mac/JobScout.app 2>&1) || { echo "::error title=Signature::codesign -dvv a échoué sur installer/output/mac/JobScout.app"; printf '%s\n' "$info"; exit 1; }
+          if grep -q '^Authority=Developer ID Application' <<<"$info"; then mode=developer-id
+          elif grep -qx 'Signature=adhoc' <<<"$info"; then mode=adhoc
+          else echo "::error title=Signature::ni ad hoc ni Developer ID"; exit 1; fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Signature::$mode — DMG $(du -h installer/output/mac/JobScout-Mac.dmg | cut -f1)"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: JobScout-Mac
+          path: |
+            installer/output/mac/JobScout-Mac.dmg
+            installer/output/mac/SHA256SUMS.txt
+            installer/output/mac/rapport-construction.json
+          if-no-files-found: error
+          retention-days: ${{ github.ref_type == 'tag' && 30 || 7 }}
+      - name: Fin du journal de construction (échec)
+        if: failure()
+        run: |
+          node installer/mac/ci-status.mjs annoter --fichier journal-mac/construction.log --titre "Construction, fin du journal" --lignes 25
+      - if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: journal-construction
+          path: journal-mac/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Nettoyage de la signature
+        if: always()
+        run: node installer/mac/sign-mac.mjs cleanup
+
+  recette:
+    name: Recette (${{ matrix.os }})
+    needs: construire
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26, macos-15-intel, macos-26-intel]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      # Pilote de la recette seulement : l'app tourne sur SON node embarqué.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - name: Système
+        run: echo "::notice title=Système (${{ matrix.os }})::macOS $(sw_vers -productVersion) ($(sw_vers -buildVersion)) $(uname -m) — Node $(node -v) — Gatekeeper $(spctl --status 2>&1)"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: JobScout-Mac
+          path: dist-mac
+      - name: Recette de JobScout-Mac.dmg
+        run: node installer/mac/test-install-mac.mjs --dmg dist-mac/JobScout-Mac.dmg --sums dist-mac/SHA256SUMS.txt --rapport dist-mac/rapport-construction.json --out recette-mac
+      - if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: recette-${{ matrix.os }}
+          path: recette-mac/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  publication-essai:
+    name: Publication (essai à blanc)
+    if: github.ref_type != 'tag'
+    needs: recette
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: JobScout-Mac
+          path: dist-mac
+      - name: Décision de publication (rien n'est écrit)
+        run: node installer/mac/publier.mjs publier --dir dist-mac --dry-run
+
+  publier:
+    name: Release en brouillon
+    if: github.ref_type == 'tag'
+    needs: [construire, recette]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+      SIGNATURE: ${{ needs.construire.outputs.signature }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag sur main et à la bonne version
+        env:
+          REF_TYPE: tag
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          node installer/mac/check-version.mjs
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error title=Tag::$TAG ne vise pas un commit de main"; exit 1; }
+          echo "::notice title=Tag::$TAG vise $GITHUB_SHA, contenu dans main"
+      - name: Tests (ci.yml) verts sur ce commit
+        run: node installer/mac/publier.mjs attendre-tests --sha "$GITHUB_SHA" --minutes 30
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: JobScout-Mac
+          path: dist-mac
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist-mac/JobScout-Mac.dmg
+      - name: Créer ou compléter le brouillon, puis le constater
+        run: node installer/mac/publier.mjs publier --dir dist-mac

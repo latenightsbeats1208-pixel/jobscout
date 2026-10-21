@@ -1,6 +1,6 @@
 # Conditions générales d'utilisation de JobScout
 
-**Version du 21 octobre 2026 · JobScout 3.4.17**
+**Version du 21 octobre 2026 · JobScout 3.4.18**
 
 Ces conditions expliquent ce qu'est JobScout, ce que vous pouvez en faire et qui est responsable de quoi. Elles complètent la licence du code ([LICENSE](LICENSE)) et la politique de confidentialité ([CONFIDENTIALITE.md](CONFIDENTIALITE.md)).
 
@@ -52,6 +52,7 @@ JobScout est un logiciel de recherche d'emploi. Il permet de :
 - En cas de conflit sur les droits sur le code, la licence MIT prévaut.
 - La clause d'absence de garantie de la licence s'applique aussi. Les sections 10 et 11 la précisent au regard du droit français.
 - L'éditeur ne publie pas les versions modifiées ou redistribuées par d'autres personnes. Chacune engage la responsabilité de celui qui la diffuse.
+- L'éditeur publie JobScout sur son dépôt GitHub seulement, y compris l'application JobScout pour Mac (`JobScout-Mac.dmg`, sur la page des versions du dépôt). Cette application n'est pas enregistrée auprès d'Apple : macOS vous demande d'autoriser sa première ouverture. N'accordez cette autorisation qu'à un fichier obtenu sur cette page.
 
 Ces conditions sont publiées dans le dépôt, à côté du code, et accessibles depuis le README. En utilisant JobScout après en avoir pris connaissance, vous les acceptez. Si vous ne les acceptez pas, n'utilisez pas JobScout.
 
@@ -227,7 +228,7 @@ Le détail figure dans la politique de confidentialité, [CONFIDENTIALITE.md](CO
   - les données envoyées au fournisseur d'IA choisi (section 9) ;
   - vos identifiants France Travail, si vous en fournissez, envoyés au serveur d'authentification de France Travail (`entreprise.francetravail.fr`) ;
   - des téléchargements techniques : le moteur Chromium pour LinkedIn, depuis les serveurs de Playwright ; les modèles de reconnaissance de texte, depuis `cdn.jsdelivr.net`, si vous importez un CV au format image ; en version source, les dépendances téléchargées à l'installation par `npm ci`.
-- Next.js, le cadre logiciel sur lequel repose JobScout, envoie des statistiques d'usage anonymes quand on lance `next dev` ou `next build`. `npm run dev`, `npm run build`, `scripts/Start-JobScout.ps1` et le lanceur Mac `JobScout.command` désactivent cet envoi. `npm run start` n'en envoie pas. Si vous lancez Next.js autrement, désactivez-le vous-même avec `npx next telemetry disable`.
+- Next.js, le cadre logiciel sur lequel repose JobScout, envoie des statistiques d'usage anonymes quand on lance `next dev` ou `next build`. `npm run dev`, `npm run build`, `scripts/Start-JobScout.ps1` et le lanceur Mac `JobScout.command` désactivent cet envoi. `npm run start` et l'application JobScout pour Mac (`JobScout.app`) n'en envoient pas : ils lancent la version compilée de JobScout, et l'application Mac désactive en plus cet envoi. Si vous lancez Next.js autrement, désactivez-le vous-même avec `npx next telemetry disable`.
 - Avec `npm run dev`, Next.js vérifie aussi à chaque démarrage s'il existe une version plus récente de lui-même, auprès de `registry.npmjs.org`. Cette requête ne contient aucune donnée vous concernant, mais le registre voit votre adresse IP. La désactivation de la télémétrie ne la coupe pas.
 - Le code contient aussi un relais d'IA et une vérification de mise à jour. Ils sont inactifs : aucune adresse n'est configurée par défaut. Ils ne s'activent que si vous définissez vous-même une adresse (`JOBSCOUT_PROXY_URL`, `JOBSCOUT_UPDATE_URL`).
 - Les offres peuvent contenir le nom ou les coordonnées d'un recruteur. Ne les utilisez que pour votre candidature (section 4).
@@ -256,4 +257,4 @@ Le détail figure dans la politique de confidentialité, [CONFIDENTIALITE.md](CO
 
 ## 16. Entrée en vigueur
 
-Ces conditions entrent en vigueur le 21 octobre 2026 et sont publiées avec JobScout 3.4.17.
+Ces conditions entrent en vigueur le 21 octobre 2026 et sont publiées avec JobScout 3.4.18.

@@ -1,4 +1,6 @@
 import "server-only";
+import path from "node:path";
+import { ensureDir, userDataDir } from "@/lib/paths";
 import { detectFileKind, type FileKind } from "./detect";
 
 const CV_KEYWORDS = /experience|formation|education|skills|comp[eé]tences|projet|profil|profile|career|emploi|stage|internship/i;
@@ -109,12 +111,26 @@ async function extractDocx(buffer: Buffer): Promise<string> {
   return result.value || "";
 }
 
+/**
+ * Dossier des modèles OCR (`fra.traineddata`, `eng.traineddata`) : sous-dossier
+ * `ocr` du dossier de données, créé au besoin. Sans `cachePath`, tesseract.js
+ * les écrit dans le dossier de lancement du serveur (`./<langue>.traineddata`),
+ * c'est-à-dire dans l'application installée : dans JobScout.app, l'écriture
+ * briserait le sceau de signature (et l'image disque est en lecture seule) ;
+ * dans un dossier protégé, elle échoue en silence et les modèles sont
+ * retéléchargés à chaque import. tesseract.js n'écrit que dans un dossier
+ * existant, d'où ensureDir.
+ */
+export function ocrCacheDir(): string {
+  return ensureDir(path.join(userDataDir(), "ocr"));
+}
+
 async function extractOcr(buffer: Buffer, kind: FileKind): Promise<string> {
   const Tesseract = await import("tesseract.js");
   // For PDFs, tesseract.js needs images. We'll only run OCR on raw images here.
   // PDF→image conversion is omitted (would require pdf2pic or sharp+pdfjs render).
   if (kind !== "image") return "";
-  const { data } = await Tesseract.recognize(buffer, "fra+eng");
+  const { data } = await Tesseract.recognize(buffer, "fra+eng", { cachePath: ocrCacheDir() });
   return data.text || "";
 }
 

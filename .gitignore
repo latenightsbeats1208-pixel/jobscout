@@ -15,6 +15,8 @@ next-env.d.ts
 *.key
 *.pfx
 *.p12
+*.p8
+*.keychain-db
 *.cer
 *.crt
 
@@ -36,6 +38,14 @@ installer/output/
 installer/runtime/
 installer/leak-needles.local.txt
 installer/leak-needles.operator.txt
+# Installeur Mac : icône générée à chaque build
+installer/assets/JobScout.icns
+installer/assets/JobScout.iconset/
+# Installeur Mac : journaux de construction, artefacts téléchargés et résultats
+# de la recette (test-install-mac.mjs écrit recette-mac/ dans le dossier courant)
+journal-mac/
+dist-mac/
+recette-mac/
 
 # Journaux, résultats de tests et caches locaux
 *.log

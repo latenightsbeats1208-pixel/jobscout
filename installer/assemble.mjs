@@ -17,7 +17,8 @@
 //  1. `next build --output standalone` recopie `.env` (donc la clé API du
 //     poste de développement) et tout ce que le traceur croise sous `data/`.
 //     L'assemblage n'est donc PAS une copie brute : `.env*` et `data/` sont
-//     exclus explicitement, en plus des exclusions de next.config.ts.
+//     exclus explicitement, ici (next.config.ts n'a volontairement aucun
+//     `outputFileTracingExcludes` : voir son commentaire).
 //
 //  2. Le traceur ne garde de `playwright-core` que ce qu'importe le serveur —
 //     `cli.js` manque, or c'est lui qui télécharge Chromium à la demande. On
@@ -28,6 +29,12 @@
 //     client). Aucune option de build ne les supprime : on les réécrit ici,
 //     de façon uniforme sur toute l'arborescence, vers une racine neutre.
 //     Voir rewriteAbsolutePaths().
+//
+// Cible Mac (`assemble({ target: "mac" })`, appelé par installer/mac/build-mac.mjs) :
+// mêmes étapes 1 à 6 vers le même dossier installer/dist/JobScout/app, racine
+// neutre POSIX `/JobScout/build`, data/LISEZ-MOI.txt aux chemins Mac, puis
+// retour AVANT les étapes 7 à 10 (node.exe, .ico, lanceur C#, textes Windows).
+// Sans `target`, l'assemblage Windows est strictement celui d'avant.
 // ============================================================================
 import fs from "node:fs";
 import path from "node:path";
@@ -52,6 +59,10 @@ const APP = path.join(PAYLOAD, "app");
 
 /** Racine neutre substituée aux chemins absolus du poste de développement. */
 const NEUTRAL_ROOT = "C:\\JobScout\\build";
+
+/** Systèmes cibles de l'assemblage, et leur racine neutre. */
+export const TARGETS = ["windows", "mac"];
+export const NEUTRAL_ROOTS = { windows: NEUTRAL_ROOT, mac: "/JobScout/build" };
 
 const log = (m) => process.stdout.write(`[assemble] ${m}\n`);
 
@@ -101,15 +112,18 @@ const mb = (bytes) => (bytes / 1024 / 1024).toFixed(1) + " Mo";
  *
  * Aucune option de build ne fait mieux : `outputFileTracingRoot` ne corrige
  * que l'arborescence de sortie, et `serverMinification` conserve ces chaînes.
+ *
+ * Sur Mac, le chemin du projet est POSIX (`/Users/runner/work/…`) : on le
+ * remplace sous ses formes « /… » et « \/… » (barres échappées) par `neutral`
+ * (`/JobScout/build`). Voir rewriteForms().
+ *
+ * @param {string} root         arborescence à réécrire
+ * @param {string} projectRoot  chemin absolu du projet sur la machine de build
+ * @param {string} [neutral]    racine neutre (défaut : `C:\JobScout\build`)
+ * @returns {{ filesTouched: number, replacements: number }}
  */
-function rewriteAbsolutePaths(root, projectRoot) {
-  const bs = projectRoot.replace(/\//g, "\\");
-  const forms = [
-    // Ordre important : la forme échappée d'abord.
-    [bs.replace(/\\/g, "\\\\"), NEUTRAL_ROOT.replace(/\\/g, "\\\\")],
-    [bs, NEUTRAL_ROOT],
-    [bs.replace(/\\/g, "/"), NEUTRAL_ROOT.replace(/\\/g, "/")],
-  ];
+export function rewriteAbsolutePaths(root, projectRoot, neutral = NEUTRAL_ROOT) {
+  const forms = rewriteForms(projectRoot, neutral);
 
   let filesTouched = 0;
   let replacements = 0;
@@ -152,6 +166,45 @@ function rewriteAbsolutePaths(root, projectRoot) {
 }
 
 /**
+ * Couples [forme du chemin du projet, remplacement], appliqués dans l'ordre
+ * (la forme échappée d'abord). Le remplacement garde le séparateur de la forme.
+ *
+ *   Projet Windows (tout chemin qui ne commence pas par « / ») — formes
+ *   inchangées depuis la 3.4.x : « C:\\… » (JSON), « C:\… », « C:/… ».
+ *   Projet POSIX (« /… ») : « \/… » (barres échappées), puis « /… ». La racine
+ *   doit compter au moins deux niveaux : réécrire « /app » corromprait toutes
+ *   les routes « /app/… » des bundles.
+ *
+ * @param {string} projectRoot
+ * @param {string} [neutral]
+ * @returns {Array<[string, string]>}
+ */
+export function rewriteForms(projectRoot, neutral = NEUTRAL_ROOT) {
+  if (projectRoot.startsWith("/")) {
+    const parts = projectRoot.replace(/\/+$/, "").split("/");
+    if (parts.filter(Boolean).length < 2) {
+      throw new Error(
+        `Racine du projet trop courte pour une réécriture sûre : « ${projectRoot} » ` +
+          "(au moins deux niveaux, par exemple /Users/<compte>/jobscout)."
+      );
+    }
+    const np = neutral.split(/[\\/]/);
+    return [
+      [parts.join("\\/"), np.join("\\/")],
+      [parts.join("/"), np.join("/")],
+    ];
+  }
+  const bs = projectRoot.replace(/\//g, "\\");
+  const nb = neutral.replace(/\//g, "\\");
+  return [
+    // Ordre important : la forme échappée d'abord.
+    [bs.replace(/\\/g, "\\\\"), nb.replace(/\\/g, "\\\\")],
+    [bs, nb],
+    [bs.replace(/\\/g, "/"), nb.replace(/\\/g, "/")],
+  ];
+}
+
+/**
  * Complète les sous-arbres du runtime Next dans la sortie tracée : n'ajoute
  * QUE les fichiers absents, sans jamais écraser ceux produits par le build.
  * Les sourcemaps et déclarations de types sont écartées (inutiles à
@@ -186,18 +239,33 @@ function completeNextRuntime() {
  *                 « test » (voir variant.mjs) — identifiant ou objet.
  * @param signed   la charge utile sera-t-elle signée ? Ne sert qu'à la page
  *                 d'information du variant de test (« signé / non signé »).
+ * @param target   « windows » (défaut, l'assemblage d'avant à l'identique) ou
+ *                 « mac » : étapes 1 à 6 seulement, racine neutre POSIX,
+ *                 data/LISEZ-MOI.txt aux chemins Mac. Le variant de test
+ *                 n'existe pas sur Mac (refusé).
+ * @returns {Promise<{ payload: string, app: string, version: string, size: number,
+ *                     variant: object, info: object | null, target: string }>}
  */
 export async function assemble({
   skipNode = false,
   variant = VARIANTS.prod,
   signed = false,
+  target = "windows",
 } = {}) {
+  if (!TARGETS.includes(target)) {
+    throw new Error(`Cible d'assemblage inconnue « ${target} » — attendu : ${TARGETS.join(" | ")}.`);
+  }
+  const isMac = target === "mac";
   variant = asVariant(variant);
   const isProd = variant.id === "prod";
+  if (isMac && !isProd) {
+    throw new Error(`Le variant « ${variant.id} » n'existe pas sur Mac : assemblez sans --variant.`);
+  }
   const version = JSON.parse(
     fs.readFileSync(path.join(PROJECT, "version.json"), "utf-8")
   ).version;
   log(`version ${version}`);
+  if (isMac) log("cible mac (étapes 1 à 6, racine neutre POSIX)");
   if (!isProd) log(`variant ${variant.id} → « ${variant.appName} »`);
 
   const standalone = path.join(PROJECT, ".next", "standalone");
@@ -302,23 +370,43 @@ export async function assemble({
   );
 
   // 5. data/ VIERGE. Les vraies données vivent dans %LOCALAPPDATA%\JobScout
-  // (ou %LOCALAPPDATA%\JobScout Test pour le variant de test).
+  // (ou %LOCALAPPDATA%\JobScout Test pour le variant de test) ; sur Mac, dans
+  // ~/Library/Application Support/JobScout (dossier choisi par le lanceur).
   const dataDir = path.join(APP, "data");
   fs.mkdirSync(dataDir, { recursive: true });
   fs.writeFileSync(
     path.join(dataDir, "LISEZ-MOI.txt"),
-    "Ce dossier est volontairement vide.\r\n\r\n" +
-      `${variant.appName} ecrit toutes vos donnees (base, documents generes, moteur\r\n` +
-      `LinkedIn) dans %LOCALAPPDATA%\\${variant.dataDirName}, jamais dans le repertoire\r\n` +
-      `d'installation. Desinstaller ${variant.appName} ne supprime ces donnees que si vous\r\n` +
-      `repondez Oui a la question posee a la fin de la desinstallation.\r\n`,
+    isMac
+      ? macDataReadme(variant)
+      : "Ce dossier est volontairement vide.\r\n\r\n" +
+          `${variant.appName} ecrit toutes vos donnees (base, documents generes, moteur\r\n` +
+          `LinkedIn) dans %LOCALAPPDATA%\\${variant.dataDirName}, jamais dans le repertoire\r\n` +
+          `d'installation. Desinstaller ${variant.appName} ne supprime ces donnees que si vous\r\n` +
+          `repondez Oui a la question posee a la fin de la desinstallation.\r\n`,
     "utf-8"
   );
 
   // 6. Neutralisation des chemins absolus.
   log("réécriture des chemins absolus du poste de développement");
-  const { filesTouched, replacements } = rewriteAbsolutePaths(PAYLOAD, PROJECT);
-  log(`  ${replacements} occurrences réécrites dans ${filesTouched} fichiers → ${NEUTRAL_ROOT}`);
+  const neutral = NEUTRAL_ROOTS[target];
+  const { filesTouched, replacements } = rewriteAbsolutePaths(PAYLOAD, PROJECT, neutral);
+  log(`  ${replacements} occurrences réécrites dans ${filesTouched} fichiers → ${neutral}`);
+
+  if (isMac) {
+    // La suite appartient à installer/mac/build-mac.mjs : élagage de sharp et
+    // de @img, gardes sur app/, node universel, lanceur Swift, icône .icns,
+    // bundle (THIRD_PARTY_NOTICES et LICENSE de Node vont dans
+    // Contents/Resources). Les étapes 7 à 10 ci-dessous ne concernent que
+    // Windows.
+    // sharp sert seulement à next/image (/_next/image), que JobScout n'utilise
+    // pas : ses binaires natifs sont retirés sur Mac. Le jour où une page
+    // utilisera next/image, /_next/image échouera dans l'app Mac : embarquer
+    // alors le sharp darwin des deux architectures, ou poser
+    // `images.unoptimized` dans next.config.ts.
+    const size = dirSize(PAYLOAD);
+    log(`charge utile Mac assemblée : ${mb(size)} → ${APP}`);
+    return { payload: PAYLOAD, app: APP, version, size, variant, info: null, target };
+  }
 
   // 7. Runtime Node embarqué.
   if (!skipNode) {
@@ -408,7 +496,36 @@ export async function assemble({
 
   const size = dirSize(PAYLOAD);
   log(`charge utile assemblée : ${mb(size)} → ${PAYLOAD}`);
-  return { payload: PAYLOAD, version, size, variant, info };
+  return { payload: PAYLOAD, app: APP, version, size, variant, info, target };
+}
+
+/**
+ * data/LISEZ-MOI.txt de l'app Mac : UTF-8, fins de ligne « \n » (TextEdit et
+ * le Terminal les affichent tels quels).
+ */
+export function macDataReadme(variant = VARIANTS.prod) {
+  const v = asVariant(variant);
+  return [
+    "Ce dossier est volontairement vide.",
+    "",
+    `${v.appName} enregistre toutes vos données (base, CV et lettres générés, moteur`,
+    `LinkedIn) dans ~/Library/Application Support/${v.dataDirName}, jamais dans`,
+    `l'application. Mettre ${v.appName} à la corbeille ne supprime pas ces données :`,
+    `pour les effacer, supprimez vous-même ce dossier (menu ${v.appName} > Dossier`,
+    "de données).",
+    "",
+  ].join("\n");
+}
+
+/** `--target mac`, `--target=mac`, sinon « windows ». */
+export function resolveTarget(argv = process.argv.slice(2)) {
+  let target = "windows";
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--target") target = argv[i + 1] ?? "";
+    else if (a.startsWith("--target=")) target = a.slice("--target=".length);
+  }
+  return target;
 }
 
 const isMain =
@@ -418,6 +535,7 @@ if (isMain) {
     skipNode: process.argv.includes("--skip-node"),
     variant: resolveVariant(),
     signed: signingEnabled(),
+    target: resolveTarget(),
   }).catch((e) => {
     console.error(`[assemble] ÉCHEC : ${e.message}`);
     process.exit(1);

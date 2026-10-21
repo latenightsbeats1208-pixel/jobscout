@@ -614,7 +614,7 @@ LM Studio est une autre application gratuite pour faire tourner une IA en local,
 
 **Au premier lancement**, l'assistant s'ouvre sur « Étape 1 sur 3 », **Importer**, avec le titre « Commençons par votre profil. ». Le bloc **Génération IA** se trouve au-dessus de la zone de dépôt du CV. Il est ouvert et affiche « À configurer ». Tant que l'IA n'est pas enregistrée, la zone de dépôt indique « Configurez d'abord la génération IA ci-dessus pour débloquer l'import. »
 
-**Plus tard**, cliquez sur **Profil** dans le menu (à gauche, ou dans la barre en bas de l'écran si la fenêtre est étroite), puis faites défiler jusqu'à la section « Paramètres et données ». La carte **Génération IA** est la première. Raccourci, si JobScout tourne à l'adresse habituelle : http://127.0.0.1:3000/profile#parametres
+**Plus tard**, cliquez sur **Profil** dans le menu (à gauche, ou dans la barre en bas de l'écran si la fenêtre est étroite), puis faites défiler jusqu'à la section « Paramètres et données ». La carte **Génération IA** est la première. Raccourci, à l'adresse habituelle : http://127.0.0.1:3000/profile#parametres depuis le code source, http://127.0.0.1:3477/profile#parametres avec l'application JobScout pour Mac.
 
 ### Ce que contient la carte
 

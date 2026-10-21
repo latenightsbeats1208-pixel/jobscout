@@ -1,6 +1,6 @@
 {
   "name": "jobscout",
-  "version": "3.4.17",
+  "version": "3.4.18",
   "private": true,
   "engines": {
     "node": ">=22.13"

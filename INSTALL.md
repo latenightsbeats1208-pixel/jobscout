@@ -1,6 +1,6 @@
 # Installer JobScout, pas à pas
 
-> **Sur Mac ? Suivez le [guide Mac](INSTALL-MAC.md).** Les mêmes étapes, avec les gestes du Mac : Terminal, installeur de Node.js, lanceur à double-cliquer. Ce guide-ci montre les écrans de Windows. Les vidéos ont été tournées sous Windows : le guide Mac dit ce qui s'y applique.
+> **Sur Mac ? Le plus simple : l'[application JobScout pour Mac](INSTALL-MAC.md#la-méthode-simple--lapplication-jobscout-pour-mac-recommandée)**, un fichier à télécharger puis à glisser dans Applications, sans Terminal ni Node.js. Le [guide Mac](INSTALL-MAC.md) décrit aussi les étapes de ce guide-ci avec les gestes du Mac (Terminal, installeur de Node.js, lanceur à double-cliquer). Ce guide-ci montre les écrans de Windows. Les vidéos ont été tournées sous Windows : le guide Mac dit ce qui s'y applique.
 
 Ce guide s'adresse à tout le monde, y compris si vous n'avez jamais ouvert un terminal. Suivez les étapes dans l'ordre : chacune dit ce que vous allez voir et comment savoir que c'est réussi.
 
@@ -54,7 +54,7 @@ Node.js est le moteur qui fait tourner JobScout.
 1. Allez sur [nodejs.org](https://nodejs.org) et téléchargez la version **LTS** (22, 24 ou 26).
 2. Lancez l'installeur et acceptez les choix proposés (« Next » / « Suivant » jusqu'au bout). Inutile de cocher l'option d'outils supplémentaires.
 
-**macOS** : l'installeur n'est pas le même (fichier `.pkg`), et la version de Node.js dépend de votre version de macOS. Suivez l'étape 1 du [guide Mac](INSTALL-MAC.md#étape-1--installer-nodejs).
+**macOS** : le plus simple est l'[application JobScout pour Mac](INSTALL-MAC.md#la-méthode-simple--lapplication-jobscout-pour-mac-recommandée), qui contient déjà Node.js et remplace les étapes 1 à 4 de ce guide (installation et lancement) ; le premier réglage (étape 5) et le premier scan (étape 6) se font de la même façon, dans le navigateur. Pour installer depuis le code source, l'installeur de Node.js n'est pas le même (fichier `.pkg`), et sa version dépend de votre version de macOS : suivez l'étape 1 du [guide Mac](INSTALL-MAC.md#étape-1--installer-nodejs).
 
 **Linux** : installez Node 22 ou 24 avec le gestionnaire de votre distribution ou avec [nvm](https://github.com/nvm-sh/nvm).
 
@@ -77,7 +77,7 @@ cd jobscout
 
 **Option B, sans Git**
 1. Sur la [page GitHub de JobScout](https://github.com/latenightsbeats1208-pixel/jobscout), cliquez sur le bouton vert **Code**, puis **Download ZIP**.
-2. Décompressez le fichier, par exemple dans `Documents`, et renommez le dossier `jobscout`. Sur Mac, suivez plutôt l'étape 2 du [guide Mac](INSTALL-MAC.md#étape-2--récupérer-jobscout).
+2. Décompressez le fichier, par exemple dans `Documents`, et renommez le dossier `jobscout`. Sur Mac, prenez plutôt l'[application JobScout pour Mac](INSTALL-MAC.md#la-méthode-simple--lapplication-jobscout-pour-mac-recommandée), ou, depuis le code source, suivez l'étape 2 du [guide Mac](INSTALL-MAC.md#étape-2--récupérer-jobscout).
 3. Ouvrez un terminal **dans ce dossier**. Windows : ouvrez le dossier dans l'Explorateur, cliquez dans la barre d'adresse, tapez `powershell` puis Entrée. macOS : dans Terminal, tapez `cd` suivi d'une espace, faites glisser le dossier dans la fenêtre, puis appuyez sur Entrée.
 
 Pour vérifier que vous êtes au bon endroit, tapez `ls` (sous Windows, `dir` marche aussi) : vous devez voir `package.json` et `README.md`.
@@ -119,7 +119,7 @@ Attendez la ligne `✓ Ready in …` (une vingtaine de secondes la première foi
 powershell -ExecutionPolicy Bypass -File scripts\Start-JobScout.ps1
 ```
 
-**Sur Mac** : `npm run shortcut:mac` crée un lanceur `JobScout.command`, avec une copie sur le Bureau, à ouvrir d'un double-clic. Voir [Le lanceur Mac](INSTALL-MAC.md#le-lanceur-mac).
+**Sur Mac** : l'[application JobScout pour Mac](INSTALL-MAC.md#la-méthode-simple--lapplication-jobscout-pour-mac-recommandée) s'ouvre d'un double-clic, sans Terminal. Depuis le code source, `npm run shortcut:mac` crée un lanceur `JobScout.command`, avec une copie sur le Bureau, à ouvrir d'un double-clic. Voir [Le lanceur Mac](INSTALL-MAC.md#le-lanceur-mac).
 
 ## Étape 5 — Premier réglage (5 à 10 minutes)
 
