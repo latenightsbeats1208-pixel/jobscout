@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS candidatures (
   notes TEXT,
   contact TEXT,
   deadline TEXT,
+  follow_up_date TEXT,
   cv_doc_id INTEGER,
   lm_doc_id INTEGER,
   msg_doc_id INTEGER,

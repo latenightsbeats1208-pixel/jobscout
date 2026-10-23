@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
     minScore: parseMinScore(params.get("minScore")),
     // ?vie=1 (lien de l'accueil) : même règle que la puce contrat « V.I.E ».
     vieOnly: params.get("vie") === "1",
+    newOnly: params.get("new") === "1",
     sortBy,
     // Ville de référence lue côté serveur : ses coordonnées ne passent jamais dans l'URL.
     home: getDistanceHome(),

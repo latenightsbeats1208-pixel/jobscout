@@ -8,9 +8,12 @@ import { getDb } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { DescriptionRenderer } from "@/components/app/description-renderer";
 import { ActionsPanel } from "./actions";
+import { InterviewPrepPanel } from "./interview-prep";
 import { formatRelativeDate, scoreColor } from "@/lib/utils";
 import { CONTRACT_LABELS } from "@/lib/contracts";
 import { SOURCES_META } from "@/lib/sources-meta";
+import { getProfile } from "@/lib/db/queries";
+import { scoreAts } from "@/lib/ats/score";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +21,8 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const offre = getOffre(Number(id));
   if (!offre) notFound();
+  const profile = getProfile();
+  const atsScore = profile?.raw_cv_text?.trim() ? scoreAts(profile.raw_cv_text, offre.title) : null;
 
   const docs = listDocuments({ offreId: offre.id });
   const cvPdf = docs.find((d) => d.type === "cv" && d.format === "pdf") ?? null;
@@ -99,8 +104,26 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
                 {offre.score_breakdown.duration != null && offre.score_breakdown.duration > 0 && <ScoreBar label="Durée V.I.E" value={offre.score_breakdown.duration} />}
               </div>
               {offre.score_breakdown.reason && <p className="mt-5 border-t border-border pt-4 text-small text-textSecondary">{offre.score_breakdown.reason}</p>}
+              {((offre.score_breakdown.matched_sectors?.length ?? 0) > 0 || (offre.score_breakdown.matched_skills?.length ?? 0) > 0) && (
+                <div className="mt-4 space-y-3 border-t border-border pt-4">
+                  <div>
+                    <p className="text-caption font-semibold uppercase tracking-wide text-textSecondary">Correspondances détectées</p>
+                    <p className="mt-1 text-small text-text">
+                      {[...(offre.score_breakdown.matched_sectors ?? []), ...(offre.score_breakdown.matched_skills ?? [])].join(" · ")}
+                    </p>
+                  </div>
+                  {(offre.score_breakdown.profile_skills_not_in_offer?.length ?? 0) > 0 && (
+                    <div>
+                      <p className="text-caption font-semibold uppercase tracking-wide text-textSecondary">Compétences du profil non mentionnées dans l’annonce</p>
+                      <p className="mt-1 text-small text-textSecondary">{offre.score_breakdown.profile_skills_not_in_offer?.join(" · ")}</p>
+                      <p className="mt-1 text-caption text-textSecondary">Cela ne signifie pas qu’elles sont requises ni qu’il vous manque une compétence.</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
           )}
+          {atsScore && <OfferAtsCard score={atsScore} targetTitle={offre.title} />}
         </aside>
 
         <article className="order-2 min-w-0 xl:order-1">
@@ -118,9 +141,43 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
           ) : (
             <div className="glass-panel p-5 sm:p-7"><DescriptionRenderer html={offre.description_html} /></div>
           )}
+          <div className="mt-6">
+            <InterviewPrepPanel offreId={offre.id} />
+          </div>
         </article>
       </div>
     </div>
+  );
+}
+
+function OfferAtsCard({ score, targetTitle }: { score: ReturnType<typeof scoreAts>; targetTitle: string }) {
+  const grade = {
+    excellent: { label: "Excellent", variant: "success" as const },
+    bon: { label: "Bon", variant: "info" as const },
+    moyen: { label: "Moyen", variant: "warning" as const },
+    faible: { label: "Faible", variant: "danger" as const },
+  }[score.grade];
+  const percent = score.max > 0 ? Math.round((score.score / score.max) * 100) : 0;
+  return (
+    <section aria-labelledby="ats-offer-title" className="glass-panel p-5">
+      <div className="flex items-center justify-between gap-2">
+        <h2 id="ats-offer-title" className="text-h3">Score ATS pour cette offre</h2>
+        <Badge variant={grade.variant}>{grade.label}</Badge>
+      </div>
+      <p className="mt-2 font-display text-[32px] font-semibold tabular-nums">{percent}<span className="text-h3 text-textSecondary">/100</span></p>
+      <p className="mt-1 text-small text-textSecondary">Comparaison locale de votre CV importé avec le poste « {targetTitle} ».</p>
+      {score.suggestions.length > 0 ? (
+        <ul className="mt-4 space-y-2 border-t border-border pt-4">
+          {score.suggestions.slice(0, 3).map((item) => (
+            <li key={item.criterion} className="text-small">
+              <span className="font-medium">{item.issue}.</span>
+              <span className="text-textSecondary"> {item.fix}</span>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="mt-3 text-small text-textSecondary">Aucune amélioration prioritaire détectée selon ce barème.</p>}
+      <p className="mt-3 text-caption text-textSecondary">Ce score indicatif n’est pas une prédiction de sélection par un ATS.</p>
+    </section>
   );
 }
 
