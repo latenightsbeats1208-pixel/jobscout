@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowUpRight, AlertTriangle, CalendarDays, MapPin } from "lucide-react";
 import { getOffre } from "@/lib/db/offres";
+import { offerDistanceText } from "@/lib/distance/home";
 import { listDocuments, offreFolderPath } from "@/lib/db/documents";
 import { getDb } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,7 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
   const msgDoc = docs.find((d) => d.type === "msg") ?? null;
   const existingApplication = getDb().prepare("SELECT status FROM candidatures WHERE offre_id = ? LIMIT 1").get(offre.id) as { status: string } | undefined;
   const score = scoreColor(offre.score ?? 0);
+  const distance = offerDistanceText(offre);
   const sourceLabel = SOURCES_META.find((source) => source.id === offre.source)?.label ?? offre.source;
   const contractLabel = offre.contract_category !== "autre" ? CONTRACT_LABELS[offre.contract_category] : null;
   // Le libellé brut de la source n'est répété que s'il apporte une précision (« Temps plein »…).
@@ -54,7 +56,18 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
           </div>
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-small text-textSecondary">
-          {(offre.location || offre.country) && <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {offre.location ?? offre.country}{offre.location && offre.country && offre.location !== offre.country ? `, ${offre.country}` : ""}</span>}
+          {(offre.location || offre.country) && (
+            <span className="inline-flex items-start gap-1.5">
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{offre.location ?? offre.country}{offre.location && offre.country && offre.location !== offre.country ? `, ${offre.country}` : ""}{distance && (
+                <>
+                  {" · "}<span className="whitespace-nowrap font-semibold text-text">{distance.label}</span>
+                  {distance.from && <>{" "}<span className="whitespace-nowrap font-semibold text-text">{distance.from}</span></>}
+                  {distance.place && <>{" "}(lieu compris : <span className="whitespace-nowrap">{distance.place}</span>)</>}
+                </>
+              )}</span>
+            </span>
+          )}
           {offre.posted_at && <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" /> {formatRelativeDate(offre.posted_at)}</span>}
           <span className="font-medium">Score {score.label.toLowerCase()}</span>
         </div>

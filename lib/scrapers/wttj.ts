@@ -3,6 +3,7 @@ import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./bas
 import { htmlToText } from "./base";
 import { detectVie } from "@/lib/vie";
 import { normalizeCountryName, nameToCode } from "@/lib/countries";
+import { decodeHtmlEntities } from "@/lib/text/entities";
 
 /**
  * Welcome to the Jungle via son index de recherche public (Algolia) — le même
@@ -22,7 +23,7 @@ const SITE = "https://www.welcometothejungle.com";
 const HITS_PER_PAGE = 50;
 const PAGES_PER_QUERY = 2;
 
-type Hit = {
+export type Hit = {
   objectID: string;
   slug: string;
   name: string;
@@ -68,13 +69,26 @@ function asText(v: unknown): string {
   return String(v);
 }
 
+// Balises qui signalent un champ Algolia en HTML. div, span, b, i, ol et les liens
+// manquaient : « <div>Texte… » était échappé puis affiché « &lt;div&gt; » en clair.
+const HTML_HINT_RE = /<\/?(?:p|div|span|ul|ol|li|br|strong|b|em|i|u|h\d)\b|<a\s+href=/i;
+
 function block(title: string, body: unknown): string {
   const t = asText(body).trim();
   if (!t) return "";
-  const isHtml = /<\/?(p|ul|li|br|strong|em|h\d)\b/i.test(t);
+  const isHtml = HTML_HINT_RE.test(t);
+  // Branche HTML : gardée telle quelle (ses entités sont légitimes). Branche texte :
+  // Algolia sert parfois du texte déjà échappé (« R&amp;D ») ; on le décode avant
+  // esc(), sinon il ressortait échappé deux fois (« R&amp;amp;D », « &amp;eacute; »).
+  // L'espace insécable en entité devient une espace simple, comme dans la branche HTML
+  // (htmlToText) et la réparation : sinon « Chef&#xa0;de projet » arrivait en U+00A0
+  // littérale, que htmlToText garde, et la recherche « chef de projet » ne trouvait plus.
   const inner = isHtml
     ? t
-    : t.split(/\n{2,}/).map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
+    : t
+        .split(/\n{2,}/)
+        .map((p) => `<p>${esc(decodeHtmlEntities(p, { nbspToSpace: true })).replace(/\n/g, "<br>")}</p>`)
+        .join("");
   return `<h2>${esc(title)}</h2>${inner}`;
 }
 
@@ -87,8 +101,11 @@ function salaryLabel(h: Hit): string | null {
   return `${range} ${cur} ${per}`;
 }
 
-function toScraped(h: Hit): ScrapedOffre | null {
-  const title = (h.name ?? "").trim();
+export function toScraped(h: Hit): ScrapedOffre | null {
+  // Titre, entreprise et ville sont du texte brut, mais Algolia les sert parfois
+  // échappés (« Développeur Java &amp; Cloud », « Chargé d&apos;études ») : décodés ici,
+  // avant detectVie et le filet de lib/db/offres.ts.
+  const title = decodeHtmlEntities(h.name ?? "").trim();
   const orgSlug = h.organization?.slug ?? "";
   if (!title || !h.slug || !orgSlug) return null;
   const office = h.offices?.[0] ?? null;
@@ -110,9 +127,9 @@ function toScraped(h: Hit): ScrapedOffre | null {
     source_id: h.objectID,
     url,
     title,
-    company: (h.organization?.name ?? "").trim(),
+    company: decodeHtmlEntities(h.organization?.name ?? "").trim(),
     country,
-    location: office?.city ?? null,
+    location: office?.city ? decodeHtmlEntities(office.city) : null,
     contract_type,
     salary: salaryLabel(h),
     description_html,

@@ -1,10 +1,10 @@
 # Politique de confidentialité de JobScout
 
-**En vigueur le 5 octobre 2026** · JobScout 3.4.13
+**En vigueur le 21 octobre 2026** · JobScout 3.4.17
 
 Cette politique explique ce que JobScout enregistre sur votre ordinateur, ce qui en sort, vers qui, et comment tout effacer. Les règles d'usage du logiciel sont dans les [conditions d'utilisation](CGU.md).
 
-Elle décrit, au mieux de la connaissance de l'éditeur, le code de JobScout 3.4.13 tel qu'il est publié dans ce dépôt. Elle ne couvre pas les copies modifiées ou redistribuées par d'autres personnes (voir les [conditions d'utilisation](CGU.md), section 3). Une version antérieure peut fonctionner autrement : jusqu'à la 3.4.12, par exemple, `npm run dev` laissait active la télémétrie de Next.js.
+Elle décrit, au mieux de la connaissance de l'éditeur, le code de JobScout 3.4.17 tel qu'il est publié dans ce dépôt. Elle ne couvre pas les copies modifiées ou redistribuées par d'autres personnes (voir les [conditions d'utilisation](CGU.md), section 3). Une version antérieure peut fonctionner autrement : jusqu'à la 3.4.12, par exemple, `npm run dev` laissait active la télémétrie de Next.js.
 
 ## 1. En bref
 
@@ -47,6 +47,7 @@ En version source, `npm run build` (nécessaire avant `npm run start`) recopie d
 - **Vos candidatures :** statut, notes, contact, échéance, et les lignes importées depuis un fichier Excel.
 - **Les documents générés :** CV et lettres en PDF et DOCX, messages en texte. Le nom des fichiers contient votre prénom et votre nom. Ils sont rangés dans le sous-dossier `documents`, ou dans le dossier que vous avez choisi. Ce dossier doit se trouver dans votre dossier personnel ou dans le dossier de données.
 - **Les réglages :** fournisseur d'IA, modèles, adresse du serveur pour un modèle local, dossier des documents. Et **vos clés API, en clair**, sans chiffrement.
+- **La ville de référence du filtre par distance**, si vous en choisissez une dans la page Offres : seulement le code de la commune, pas d'adresse. La ville de votre profil vous est proposée, mais elle n'est enregistrée qu'après votre clic.
 - **L'historique des scans :** date, statut et journal de chaque scan.
 - **Le journal du serveur**, avec l'installeur Windows seulement : `logs\server.log`, réécrit à chaque démarrage. Il peut contenir des extraits de vos documents (corrections de la relecture), des noms d'entreprises et de compétences, la quantité de texte traitée par l'IA (en « jetons ») et les erreurs. En version source, ces messages s'affichent dans le terminal : JobScout ne les enregistre pas dans un fichier.
 - **Le moteur LinkedIn**, si vous l'installez : environ 100 Mo à télécharger, 265 Mo sur le disque. Le bouton « Installer le moteur LinkedIn » le range dans le sous-dossier `browsers`. `npm run playwright:install` le range dans le dossier commun de Playwright (`ms-playwright`). JobScout réutilise aussi ce dossier commun s'il y trouve déjà Chromium.
@@ -62,6 +63,8 @@ JobScout ne crée ni compte ni cookie.
 JobScout n'envoie rien de lui-même : chaque échange décrit ci-dessous suit une action de votre part. Il n'y a aucun scan automatique. Quand JobScout est fermé, il ne fait rien.
 
 Il y a une exception. Si vous lancez JobScout depuis le code source avec `npm run dev`, ou avec le raccourci `scripts/Start-JobScout.ps1` ou le lanceur Mac `JobScout.command`, qui utilisent cette commande (c'est la méthode des guides d'installation), Next.js vérifie à chaque démarrage s'il existe une version plus récente de lui-même. Pour cela, il interroge le registre npm (`registry.npmjs.org`). Cette requête ne contient aucune donnée de JobScout ni aucune donnée sur vous, mais le registre voit votre adresse IP. `npm run start` et l'installeur Windows ne font pas cette vérification.
+
+**Le filtre par distance ne fait rien sortir.** La base des communes françaises et des villes du monde est incluse dans le logiciel. Les distances sont calculées sur votre ordinateur : ni votre ville de référence ni le lieu des offres ne sont envoyés à qui que ce soit. Ce filtre n'affiche aucune carte et ne charge aucune ressource extérieure.
 
 ### 4.1 Le fournisseur d'IA que vous choisissez
 
@@ -141,7 +144,7 @@ Quand vous ouvrez une annonce ou cliquez sur « Postuler », c'est votre navigat
 ## 5. Ce que l'éditeur ne fait pas
 
 - **Aucun serveur de l'éditeur.** Rien de ce que vous faites dans JobScout ne lui parvient.
-- **Aucun suivi.** Ni télémétrie, ni mesure d'audience, ni rapport de plantage, ni publicité. L'interface ne charge aucune ressource extérieure : même les polices de caractères sont incluses dans le logiciel.
+- **Aucun suivi.** Ni télémétrie, ni mesure d'audience, ni rapport de plantage, ni publicité. L'interface ne charge aucune ressource extérieure : même les polices de caractères et la base géographique du filtre par distance sont incluses dans le logiciel.
 - **Télémétrie de Next.js désactivée.** Next.js envoie par défaut des statistiques d'usage anonymes à son éditeur, Vercel. Depuis la 3.4.13, `npm run dev` et `npm run build` lancent Next.js avec `NEXT_TELEMETRY_DISABLED=1`, et `scripts/Start-JobScout.ps1` comme le lanceur Mac `JobScout.command` passent par `npm run dev`. `npm run start` et l'installeur Windows n'ont pas besoin de ce réglage : Next.js n'envoie ces statistiques qu'en développement et à la compilation. Si vous lancez Next.js autrement, coupez-la vous-même : définissez la variable `NEXT_TELEMETRY_DISABLED=1`, ou lancez une fois `npx next telemetry disable`.
 - **Aucun relais actif.** Le code contient deux fonctions réseau en sommeil : un relais d'IA et une vérification de mise à jour. Elles ne s'activent que si une adresse est fournie dans la variable `JOBSCOUT_PROXY_URL` ou `JOBSCOUT_UPDATE_URL`. La version publiée sur GitHub n'en fournit aucune : ces fonctions n'envoient donc rien. Si vous définissez ces variables vous-même, vos données partent vers l'adresse que vous avez choisie.
 - **Aucune mise à jour automatique.** Vous mettez JobScout à jour vous-même, avec `git pull` ou un nouveau téléchargement.
@@ -201,6 +204,7 @@ Vos données restent sur votre ordinateur tant que vous ne les supprimez pas. Jo
 |---|---|
 | Une candidature | Page Candidatures : « Modifier » (« Modifier le suivi » sur petit écran), puis « Supprimer », et confirmez |
 | Un profil enregistré | Profil › Profils enregistrés : l'icône de suppression à droite du profil, puis « Confirmer » |
+| Votre ville de référence (filtre par distance) | Page Offres : bouton « Autour de … », puis « Retirer ma ville » |
 | Vos clés API | Profil › Paramètres et données › Génération IA : « Réinitialiser ». Toutes les clés enregistrées sont vidées et la génération IA est désactivée. En version source, une `ANTHROPIC_API_KEY` inscrite dans `.env` reste utilisée avec `npm run dev` : retirez-la aussi du fichier |
 | Votre profil actuel | Profil : « Remplacer le profil », puis importez un autre CV. L'ancien profil est remplacé, mais ses copies dans « Profils enregistrés » restent |
 | Vos documents | Pas de bouton dédié : cliquez sur « Ouvrir le dossier » (Profil › Paramètres et données › Dossier des documents), puis supprimez les fichiers |
@@ -264,4 +268,4 @@ Le dépôt est hébergé par GitHub. Quand vous le consultez, le clonez, le tél
 
 Cette politique est versionnée avec le code : chaque modification apparaît dans l'historique Git du dépôt. Elle sera mise à jour si le fonctionnement de JobScout change, par exemple si une nouvelle destination de données apparaît. La date indiquée en tête est celle de la version en vigueur.
 
-**Entrée en vigueur :** 5 octobre 2026 (JobScout 3.4.13).
+**Entrée en vigueur :** 21 octobre 2026 (JobScout 3.4.17). Dernière modification : ajout du filtre par distance (3.4.17).

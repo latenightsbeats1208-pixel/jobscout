@@ -1,5 +1,6 @@
 import "server-only";
 import { JSDOM } from "jsdom";
+import { decodeHtmlEntities, unescapeEscapedHtml } from "@/lib/text/entities";
 
 // Parse un document HTML côté serveur. jsdom est déjà présent (dépendance
 // d'isomorphic-dompurify) — bien plus rapide qu'un aller-retour Playwright
@@ -106,15 +107,19 @@ export function extractJobPostingLd(doc: Document): JobPostingLd | null {
           ? `${j.baseSalary.value.minValue}-${j.baseSalary.value.maxValue ?? ""} ${j.baseSalary.currency ?? ""}`.trim()
           : null;
 
+      // Le JSON-LD est lu brut (textContent d'un <script>, aucun décodage par le
+      // parseur) : les éditeurs y échappent souvent le texte (« l&apos;unité »), et
+      // Talent y sert la description en HTML entièrement échappé (« &lt;p&gt;… »).
+      const text = (v: unknown): string | null => (typeof v === "string" ? decodeHtmlEntities(v) : null);
       return {
-        title: j.title ?? null,
-        company: j.hiringOrganization?.name ?? null,
-        locality: addr?.addressLocality ?? null,
-        country: typeof rawCountry === "string" ? rawCountry : null,
-        description_html: typeof j.description === "string" ? j.description : null,
+        title: text(j.title),
+        company: text(j.hiringOrganization?.name),
+        locality: text(addr?.addressLocality),
+        country: text(rawCountry),
+        description_html: typeof j.description === "string" ? unescapeEscapedHtml(j.description) : null,
         contract_type: Array.isArray(j.employmentType)
-          ? j.employmentType.join(", ")
-          : j.employmentType ?? null,
+          ? decodeHtmlEntities(j.employmentType.join(", "))
+          : text(j.employmentType),
         salary,
         posted_at: j.datePosted ?? null,
       };

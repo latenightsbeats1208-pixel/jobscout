@@ -39,8 +39,8 @@ export default async function DashboardPage() {
   const report = searchReport(30);
   const documents = listDocuments();
   const untrackedCount = untrackedOffresCount();
-  // D4 : carte V.I.E pour un profil qui en cherche (même détection que la 3.5.0 : contrats recherchés),
-  // sinon les offres les mieux classées.
+  // D4 : carte V.I.E pour un profil qui en cherche (contrats recherchés : preferred_contracts
+  // contient « vie »), sinon les offres les mieux classées.
   const wantsVie = profile?.preferred_contracts?.includes("vie") ?? false;
   const thirdFigure = wantsVie ? vieFigure() : highScoreFigure(HIGH_SCORE);
   const firstName = profile?.full_name?.trim().split(/\s+/)[0] || null;

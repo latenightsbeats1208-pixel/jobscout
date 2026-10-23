@@ -1,6 +1,6 @@
 # Conditions générales d'utilisation de JobScout
 
-**Version du 5 octobre 2026 · JobScout 3.4.13**
+**Version du 21 octobre 2026 · JobScout 3.4.17**
 
 Ces conditions expliquent ce qu'est JobScout, ce que vous pouvez en faire et qui est responsable de quoi. Elles complètent la licence du code ([LICENSE](LICENSE)) et la politique de confidentialité ([CONFIDENTIALITE.md](CONFIDENTIALITE.md)).
 
@@ -30,6 +30,7 @@ JobScout est un logiciel de recherche d'emploi. Il permet de :
 
 - chercher des offres sur plusieurs sites d'emploi (section 6) ;
 - les classer avec un score calculé sur votre ordinateur, à partir de votre profil ;
+- les filtrer par distance autour d'une ville que vous choisissez, avec un calcul fait sur votre ordinateur (distances à vol d'oiseau, données géographiques incluses dans le logiciel) ;
 - créer votre profil à partir de votre CV, puis rédiger un CV, une lettre de motivation ou, pour les offres de V.I.E (volontariat international en entreprise), un message court, avec le fournisseur d'IA de votre choix (section 9) ;
 - suivre vos candidatures.
 
@@ -255,4 +256,4 @@ Le détail figure dans la politique de confidentialité, [CONFIDENTIALITE.md](CO
 
 ## 16. Entrée en vigueur
 
-Ces conditions entrent en vigueur le 5 octobre 2026 et sont publiées avec JobScout 3.4.13.
+Ces conditions entrent en vigueur le 21 octobre 2026 et sont publiées avec JobScout 3.4.17.

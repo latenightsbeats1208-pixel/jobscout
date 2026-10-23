@@ -5,6 +5,7 @@ import {
   isEngineInstalled,
   ENGINE_MISSING_MESSAGE,
 } from "./browser-engine";
+import { decodeHtmlEntities } from "@/lib/text/entities";
 
 export type ScrapedOffre = {
   source_id: string;
@@ -66,18 +67,17 @@ export async function newContext(): Promise<BrowserContext> {
 }
 
 export function htmlToText(html: string): string {
-  return html
+  const stripped = html
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    .replace(/<[^>]+>/g, "");
+  // Entités décodées APRÈS le retrait des balises (un « &lt;div&gt; » du texte reste du
+  // texte) et en une seule passe : l'ancienne chaîne de .replace ne connaissait que six
+  // entités (« &eacute; », « &rsquo; », « &#43; » restaient en clair) et décodait
+  // « &amp;lt; » deux fois. L'espace insécable en entité devient une espace simple.
+  return decodeHtmlEntities(stripped, { nbspToSpace: true })
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();

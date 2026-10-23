@@ -96,6 +96,15 @@ WTTJ est interrogée avec la clé de recherche (lecture seule) qu'utilise l'inte
 
 Aucun appel IA : instantané et illimité. Re-scoring global : `POST /api/offres/rescore` (après modification du profil).
 
+## Filtre par distance (local)
+
+Page Offres › « Définir ma ville » : choisissez votre ville de référence par son nom ou son code postal. La ville de votre profil est proposée, jamais enregistrée sans clic. Le menu « Toutes distances » garde ensuite les offres de votre ville ou situées jusqu'à 5, 10, 20, 30, 50, 100 ou 200 km, avec le nombre d'offres de chaque rayon, croisé avec les autres filtres. Le tri « Plus proches » classe la liste par distance, et chaque offre comme sa fiche affiche la sienne.
+
+- **À vol d'oiseau**, depuis le centre de la commune, arrondie (au kilomètre sous 100 km) ; le filtre compare la distance affichée.
+- **Lieu approximatif** (connu au seul département, ou commune devinée parmi des homonymes) : distance précédée de « ≈ », lieu compris affiché.
+- **Offres en France sans ville précise** (télétravail, région seule) : hors rayon par défaut, « Les inclure » les ajoute. Une offre à l'étranger sans ville n'entre jamais dans un rayon.
+- **Calcul local** : communes françaises et villes du monde sont embarquées dans `lib/geo/data` (`lib/geo`) ; rien n'est envoyé hors de l'ordinateur, aucune carte n'est chargée. Seul le code de la commune choisie est enregistré dans la base locale. Reconstruire la base : `node scripts/build-geo.mjs <dossier des sources>` (sources et adresses de téléchargement en tête du script).
+
 ## Extraction du CV
 
 Cascade selon le type de fichier : PDF (`pdf-parse` ou `pdfjs-dist` multi-colonnes, meilleur retenu), DOCX (`mammoth`), image (`tesseract.js` FR+EN), TXT. Les modèles de reconnaissance d'image (FR, EN) sont téléchargés une fois depuis `cdn.jsdelivr.net`. Puis extraction structurée par le fournisseur d'IA choisi (appel d'outil forcé, ou réponse JSON contrainte selon le fournisseur), validation Zod, score de confiance et **garde-fou anti-hallucination** (suppression des entreprises et compétences non ancrées dans le profil).
@@ -139,5 +148,12 @@ JOBSCOUT_LIVE=1 JOBSCOUT_LIVE_PROVIDER=openai JOBSCOUT_LIVE_KEY=sk-... npx vites
 ## Licence
 
 MIT — voir [`LICENSE`](LICENSE). Les marques des sites scannés appartiennent à leurs propriétaires ; JobScout n'est affilié à aucun d'eux.
+
+Composants tiers embarqués, avec leurs propres licences : polices DM Sans et Plus Jakarta Sans (SIL OFL 1.1) ; données géographiques du filtre par distance (`lib/geo/data`) :
+
+- `geo-fr.json.gz` (communes et départements français) : base de données mise à disposition sous [Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Elle contient des informations issues du jeu « Contours administratifs » (Etalab, data.gouv.fr), disponible sous ODbL, à partir duquel geo.api.gouv.fr calcule les centres des communes (contours d'ADMIN EXPRESS, IGN, pour la métropole ; d'un jeu publié pour chacune pour la Polynésie française et la Nouvelle-Calédonie). Communes, codes et populations : INSEE ; codes postaux : La Poste (Licence Ouverte 2.0 pour leurs propres données). Données modifiées ; méthode de construction : [`scripts/build-geo.mjs`](scripts/build-geo.mjs). L'ODbL porte sur cette base, pas sur le code de JobScout (MIT).
+- `geo-world.json.gz` (villes et pays du monde) : villes et pays de GeoNames (CC BY 4.0, données modifiées), noms français des pays de l'INSEE (Licence Ouverte 2.0).
+
+Sources, dates, modifications et textes de licence : [`THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_NOTICES.txt).
 
 Utilisation : [conditions générales d'utilisation](CGU.md). Données personnelles : [politique de confidentialité](CONFIDENTIALITE.md).

@@ -2,6 +2,8 @@ import "server-only";
 import { getEnabledScrapers } from "@/lib/scrapers/registry";
 import { DEFAULT_SOURCE_IDS, sourceLabel, sourceUnavailable } from "@/lib/sources-meta";
 import { upsertOffreFromSource, setOffreScore } from "@/lib/db/offres";
+import { sanitizeScrapedOffre } from "@/lib/offres/clean-text";
+import { registerScanForRepairs } from "@/lib/db/repair-markup";
 import { scoreOffresLocal } from "@/lib/scoring/local";
 import { getProfile } from "@/lib/db/queries";
 import { getDb, setSetting } from "@/lib/db";
@@ -51,6 +53,9 @@ export async function* runScan(
   const db = getDb();
   const runRes = db.prepare("INSERT INTO scan_runs (status) VALUES ('running')").run();
   const runId = Number(runRes.lastInsertRowid);
+  // Scan du code actuel (filet d'écriture) : ne fait pas attendre les réparations des
+  // offres en base, contrairement à un scan de l'ancien code encore en cours.
+  registerScanForRepairs(runId);
   const log: string[] = [];
   const flush = () =>
     db.prepare("UPDATE scan_runs SET log = ? WHERE id = ?").run(JSON.stringify(log), runId);
@@ -87,7 +92,9 @@ export async function* runScan(
         if (offre.description_status === "ok") {
           totalInserted++;
           okCount++;
-          buffer.push({ id, offre });
+          // Noté sur le texte tel qu'il est enregistré (entités décodées, mojibake
+          // réparé), pas sur l'objet brut du scraper.
+          buffer.push({ id, offre: sanitizeScrapedOffre(offre, scraper.name) });
           if (buffer.length >= SCORE_BATCH) {
             await scoreBatch(buffer, profile, pendingScoring);
             while (pendingScoring.length) yield pendingScoring.shift()!;

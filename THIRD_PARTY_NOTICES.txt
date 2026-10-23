@@ -1,6 +1,10 @@
 JobScout - composants tiers
 ===========================================================================
 
+JobScout embarque des composants tiers soumis a leur propre licence : des
+polices de caracteres (ci-dessous) et des donnees geographiques pour le
+filtre par distance (fin de ce fichier).
+
 JobScout embarque les polices suivantes, distribuees sous la licence
 SIL Open Font License, version 1.1 (OFL-1.1), dans les fichiers WOFF2
 publies par le projet Fontsource (fontsource.org). Elles accompagnent le
@@ -205,3 +209,136 @@ INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
 DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
+
+===========================================================================
+Donnees geographiques (filtre "distance") - lib/geo/data
+===========================================================================
+
+JobScout embarque deux fichiers de donnees geographiques, construits par
+scripts/build-geo.mjs et lus sur le poste, sans aucun appel reseau :
+lib/geo/data/geo-fr.json.gz et lib/geo/data/geo-world.json.gz. Ils n'ont
+pas la meme licence : voir chacun ci-dessous.
+
+---------------------------------------------------------------------------
+lib/geo/data/geo-fr.json.gz - communes et departements francais
+---------------------------------------------------------------------------
+
+Licence : la base de donnees lib/geo/data/geo-fr.json.gz est mise a
+disposition sous Open Database License (ODbL) 1.0 - https://opendatacommons.org/licenses/odbl/1-0/
+L'ODbL porte sur cette base de donnees, pas sur le code de JobScout (licence
+MIT), qui l'utilise : les distances affichees par l'application en sont
+tirees, d'ou l'avis ci-dessous, repris sous une forme courte dans
+l'interface (page Offres, fenetre "Ville de reference").
+
+Avis d'attribution (ODbL 1.0, article 4.3) :
+  Contient des informations issues du jeu de donnees "Contours
+  administratifs" (Etalab, data.gouv.fr), disponible sous Open Database
+  License (ODbL), https://www.data.gouv.fr/fr/datasets/contours-administratifs/ ;
+  contours de la metropole : ADMIN EXPRESS, IGN. Communes, codes INSEE
+  et populations : INSEE. Codes postaux : La Poste.
+
+Sources, champ par champ. Donnees obtenues par l'API Decoupage
+administratif, https://geo.api.gouv.fr/decoupage-administratif
+(Etalab / DINUM), telechargees le 20/10/2026 ; la documentation de l'API et
+ses conditions d'utilisation n'indiquent aucune licence pour les donnees
+servies ; JobScout applique donc les licences des jeux d'origine,
+indiquees ci-dessous.
+- noms, codes INSEE et population : INSEE (Code officiel geographique et
+  populations legales, millesimes servis par l'API a la date du
+  telechargement) ; noms et codes des departements : INSEE (Code officiel
+  geographique) ;
+- codes postaux : La Poste (Base officielle des codes postaux, autrefois
+  sous licence ODbL, aujourd'hui sous Licence Ouverte) ;
+- centres des communes (seule donnee utilisee pour les distances et les
+  points de departement) : calcules par l'API (point situe sur la surface
+  de la commune) a partir du jeu "Contours administratifs" publie par
+  Etalab, sous Open Database License (ODbL)
+  (https://www.data.gouv.fr/fr/datasets/contours-administratifs/ ;
+  https://github.com/datagouv/contours-administratifs). D'apres la
+  description de ce jeu, ces contours viennent :
+  - pour la metropole : d'ADMIN EXPRESS,
+    IGN (Institut national de l'information geographique et forestiere),
+    https://geoservices.ign.fr/adminexpress (la description ne precise
+    pas la source des departements d'outre-mer) ;
+  - pour la Polynesie francaise : du jeu "Geographie administrative de la
+    Polynesie francaise",
+    https://www.data.gouv.fr/fr/datasets/geographie-administrative-de-la-polynesie-francaise/ ;
+  - pour la Nouvelle-Caledonie : du jeu "Limites de provinces et des
+    communes de Nouvelle-Caledonie", publie par la DTSI-SGT sur le portail
+    georep,
+    https://georep-dtsi-sgt.opendata.arcgis.com/datasets/dtsi-sgt::limites-administratives-terrestres-1/about?layer=0 ;
+  - pour les autres collectivites d'outre-mer : d'OpenStreetMap. Les
+    centres de leurs communes ne sont pas conserves (voir "Communes non
+    geolocalisees" ci-dessous).
+Licence Ouverte / Open Licence version 2.0 (Etalab), pour les donnees de
+l'INSEE et de La Poste ci-dessus, qui gardent cette licence pour
+elles-memes : https://www.data.gouv.fr/pages/legal/licences/etalab-2.0
+
+Modifications apportees (geo-fr.json.gz est une base derivee) :
+- lignes : les 35 014 communes actuelles et arrondissements municipaux
+  servis par l'API (dont les 45 arrondissements de Paris, Lyon et
+  Marseille) ; les 101 departements, plus les 8 collectivites d'outre-mer
+  absentes de leur liste (109 entrees) ;
+- champs : seuls sont gardes le code INSEE, le nom, le code du departement,
+  les codes postaux, le centre et la population de chaque commune, et le
+  code, le nom et le code de region de chaque departement ;
+- coordonnees des centres arrondies a 4 decimales (l'API les sert a cette
+  precision au plus) ;
+- noms normalises pour la recherche : une cle (minuscules, sans accents ni
+  ponctuation, "st" et "ste" developpes) est ajoutee a chaque nom, calculee
+  par lib/geo/normalize.mjs ;
+- point de chaque departement et collectivite calcule : barycentre des
+  centres de ses communes, pondere par leur population (arrondissements
+  municipaux exclus) ;
+- noms de ces 8 collectivites d'outre-mer ajoutes (ils ne viennent pas de
+  l'API) ;
+- 13 communes sans centre (voir ci-dessous) ;
+- format : JSON compact en tableaux, compresse en gzip, avec un en-tete
+  (version du format, date de construction, sources et licence).
+
+Communes non geolocalisees : les 13 communes de Saint-Pierre-et-Miquelon
+(Saint-Pierre, Miquelon-Langlade), Saint-Barthelemy, Saint-Martin, des
+Terres australes et antarctiques francaises (cinq districts), de
+Wallis-et-Futuna (Alo, Sigave, Uvea) et de Clipperton. La base garde leur
+nom, leur code INSEE, leurs codes postaux et leur population (INSEE, La
+Poste), mais aucun centre, ni aucun point calcule a partir de leurs centres
+(pas de point pour ces collectivites) : une offre qui s'y trouve est
+reconnue, sans distance.
+
+Base derivee et methode de construction (ODbL 1.0, article 4.6) : la base
+derivee complete est ce fichier lui-meme, lisible par machine (JSON
+compresse en gzip). La methode qui la construit a partir des sources est le
+script scripts/build-geo.mjs, publie avec le code source de JobScout ; les
+adresses de telechargement des sources figurent en tete du script :
+  node scripts/build-geo.mjs <dossier des sources> [dossier de sortie]
+
+---------------------------------------------------------------------------
+lib/geo/data/geo-world.json.gz - villes et pays du monde
+---------------------------------------------------------------------------
+
+Ce fichier n'est pas sous ODbL : il est construit sans aucune donnee du jeu
+"Contours administratifs" ni de geo-fr.json.gz. Les donnees ont ete
+modifiees (detail ci-dessous).
+
+- Noms francais des pays et territoires : INSEE, Code officiel geographique
+  au 1er janvier 2026, fichier "Pays et territoires etrangers"
+  (v_pays_territoire_2026.csv), https://www.insee.fr/fr/information/8740222.
+  Licence Ouverte / Open Licence version 2.0.
+
+- Villes du monde (cities1000) et noms anglais des pays (countryInfo) :
+  GeoNames, https://www.geonames.org, fichiers
+  https://download.geonames.org/export/dump/cities1000.zip et
+  https://download.geonames.org/export/dump/countryInfo.txt, donnees
+  telechargees le 20/10/2026.
+  Licence Creative Commons Attribution 4.0 International (CC BY 4.0) :
+  https://creativecommons.org/licenses/by/4.0/
+  Avertissement de GeoNames, conserve ici : les donnees sont fournies
+  "en l'etat" ("as is"), sans garantie ni declaration d'exactitude,
+  d'actualite ou d'exhaustivite.
+  Donnees modifiees : villes de 15 000 habitants ou plus (toutes les
+  localites pour la Belgique, la Suisse, le Luxembourg, Monaco et Andorre),
+  territoires francais retires (couverts par les communes de
+  geo-fr.json.gz, ou non geolocalises), lieux historiques, abandonnes ou
+  detruits retires, noms alternatifs limites a l'alphabet latin (sans
+  chiffres ni codes courts), noms francais ajoutes pour certaines villes et
+  certains pays.

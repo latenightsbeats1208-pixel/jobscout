@@ -146,6 +146,8 @@ Page **Offres** › **Lancer un scan**. JobScout interroge chaque source, puis n
 - Gardez la page du scan ouverte : elle reste bloquée jusqu'à la fin. Vous pouvez utiliser le reste de l'ordinateur pendant ce temps ; laissez le terminal ouvert et évitez la mise en veille.
 - Une source indisponible (site en panne, protection anti-robot) est signalée dans le journal du scan ; les autres continuent.
 
+Pour ne garder que les offres proches de chez vous, cliquez sur **Définir ma ville** dans les filtres, puis choisissez un rayon dans le menu **Toutes distances** (de « Dans ma ville » à « Jusqu'à 200 km »). Les distances sont calculées sur votre machine, sans rien envoyer.
+
 Ensuite, sur la fiche d'une offre, **Générer les documents** produit un CV et une lettre d'une page (PDF et Word), en français, ou en anglais si l'annonce est en anglais (une annonce dans une autre langue donne des documents en français). C'est la seule étape (avec l'import du CV) qui utilise l'IA : 0,12 à 0,20 $ par dossier avec Claude, selon les tarifs du fournisseur sinon, rien avec un modèle local. Comptez en général moins de deux minutes avec un modèle en ligne, davantage avec un modèle local.
 
 ## Au quotidien

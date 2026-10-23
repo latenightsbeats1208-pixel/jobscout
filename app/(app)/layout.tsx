@@ -2,10 +2,15 @@ import { Sidebar } from "@/components/app/sidebar";
 import { WorkspaceBar } from "@/components/app/workspace-bar";
 import { currentVersion, productName } from "@/lib/update/check";
 import { getProfile } from "@/lib/db/queries";
+import { ensureOffresRepaired } from "@/lib/db/repair-markup";
 
 export const dynamic = "force-dynamic";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
+  // Réparations uniques des offres (entités HTML, puis balisage en clair) dès la
+  // première page, avant toute page qui lit les offres sans passer par lib/db/offres.ts
+  // (documents, accueil) ; ensuite sans coût. Garde : tests/html-entities.test.ts.
+  ensureOffresRepaired();
   const profileName = getProfile()?.full_name?.trim() || null;
   return (
     <div className="app-shell min-h-[100dvh]">

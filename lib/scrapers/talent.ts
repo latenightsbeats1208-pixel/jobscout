@@ -3,6 +3,7 @@ import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./bas
 import { htmlToText } from "./base";
 import { detectVie } from "@/lib/vie";
 import { nameToCode } from "@/lib/countries";
+import { snippetToHtml } from "@/lib/text/entities";
 import {
   parseDocument,
   firstMatchHtml,
@@ -46,7 +47,7 @@ const DETAIL_SELECTORS = [
 
 type Domain = (typeof DOMAINS)[number];
 
-type Card = {
+export type Card = {
   id: string;
   url: string;
   title: string;
@@ -127,7 +128,7 @@ async function fetchSearchPage(domain: Domain, keywords: string, page: number): 
   return parseSearchPage(await res.text(), domain);
 }
 
-async function enrich(card: Card): Promise<ScrapedOffre> {
+export async function enrich(card: Card): Promise<ScrapedOffre> {
   let descHtml: string | null = null;
   let ldCompany: string | null = null;
   let ldPosted: string | null = null;
@@ -151,9 +152,10 @@ async function enrich(card: Card): Promise<ScrapedOffre> {
   // Le snippet de recherche est propre : on l'utilise si le détail est vide/court.
   const detailText = descHtml ? htmlToText(descHtml) : "";
   const useSnippet = detailText.length < 120 && card.snippet.length > detailText.length;
-  const description_html = useSnippet
-    ? `<p>${card.snippet}</p>`
-    : descHtml ?? (card.snippet ? `<p>${card.snippet}</p>` : "");
+  // Le snippet est du texte (textContent, déjà décodé) : échappé avant de l'insérer
+  // dans du HTML, sinon un « < » ou un « & » du texte devenait du balisage.
+  const snippetHtml = snippetToHtml(card.snippet);
+  const description_html = useSnippet ? snippetHtml : descHtml ?? snippetHtml;
   const description_text = useSnippet ? card.snippet : detailText || card.snippet;
   const okStatus = description_text.length >= 100;
   return {

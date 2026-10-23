@@ -3,8 +3,42 @@ import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./bas
 import { htmlToText, newContext } from "./base";
 import { detectVie } from "@/lib/vie";
 import { normalizeCountryName, strictCountryName } from "@/lib/countries";
+import { decodeHtmlEntities, unescapeEscapedHtml } from "@/lib/text/entities";
 
 const SOURCE = "linkedin";
+
+/** Texte d'un champ JSON-LD (lu brut, souvent échappé par l'éditeur) : décodé, ou null. */
+export function ldText(v: unknown): string | null {
+  const s = Array.isArray(v) ? v.filter((x) => typeof x === "string").join(", ") : v;
+  return typeof s === "string" && s ? decodeHtmlEntities(s) : null;
+}
+
+export type LinkedinLdFields = {
+  description: string | null;
+  title: string | null;
+  company: string | null;
+  locality: string | null;
+  country: string | null;
+  employmentType: string | null;
+};
+
+/**
+ * Champs utiles du JSON-LD d'une fiche LinkedIn (repli quand le DOM ne les donne pas).
+ * Les champs du DOM (textContent, innerHTML) sont déjà décodés ou fidèlement
+ * re-sérialisés ; le JSON-LD, lui, est lu brut : ses textes sont décodés ici et sa
+ * description, parfois servie en HTML entièrement échappé, est ramenée à du HTML.
+ */
+export function ldFields(rawLd: any): LinkedinLdFields {
+  const address = rawLd?.jobLocation?.address;
+  return {
+    description: typeof rawLd?.description === "string" ? unescapeEscapedHtml(rawLd.description) : null,
+    title: ldText(rawLd?.title),
+    company: ldText(rawLd?.hiringOrganization?.name),
+    locality: ldText(address?.addressLocality),
+    country: ldText(address?.addressCountry?.name ?? address?.addressCountry),
+    employmentType: ldText(rawLd?.employmentType),
+  };
+}
 
 type ListingCard = {
   jobId: string;
@@ -258,7 +292,9 @@ async function fetchDetail(page: any, card: ListingCard): Promise<ScrapedOffre> 
         return { title, company, location, desc, datePosted, ld, criteria };
       });
 
-      const desc = data.desc || data.ld?.description || "";
+      // JSON-LD lu brut : décodé par ldFields (testé sans navigateur).
+      const ld = ldFields(data.ld);
+      const desc = data.desc || ld.description || "";
       if (!desc || desc.length < 80) {
         lastErr = `description trop courte (${desc.length} chars) — page bloquée ou sans contenu`;
         attempt++;
@@ -268,24 +304,24 @@ async function fetchDetail(page: any, card: ListingCard): Promise<ScrapedOffre> 
       }
 
       const text = htmlToText(desc);
-      const title = data.title || data.ld?.title || card.title || "Offre LinkedIn";
+      const title = data.title || ld.title || card.title || "Offre LinkedIn";
       const company =
-        data.company || data.ld?.hiringOrganization?.name || card.company || "";
+        data.company || ld.company || card.company || "";
       const location =
         data.location ||
-        data.ld?.jobLocation?.address?.addressLocality ||
+        ld.locality ||
         card.location ||
         null;
       // Pays : JSON-LD quand il existe, sinon déduit du libellé de lieu
       // (« Paris, Île-de-France, France » → « France »). Sans cela, 100 % des
       // offres LinkedIn restaient sans pays et perdaient 10 points de score.
       const country =
-        normalizeCountryName(data.ld?.jobLocation?.address?.addressCountry || null) ??
+        normalizeCountryName(ld.country || null) ??
         inferCountryFromLocation(location);
       const contract_type =
         data.criteria["Type d'emploi"] ||
         data.criteria["Employment type"] ||
-        data.ld?.employmentType ||
+        ld.employmentType ||
         null;
 
       return {

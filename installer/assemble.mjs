@@ -7,7 +7,7 @@
 //     JobScout.exe        launcher natif (compilé depuis launcher/)
 //     jobscout.ico        icône (raccourcis + zone de notification)
 //     LISEZ-MOI.txt
-//     THIRD_PARTY_NOTICES.txt  licences des polices embarquées (OFL 1.1)
+//     THIRD_PARTY_NOTICES.txt  licences des composants tiers (polices OFL 1.1, données géographiques)
 //     runtime/node.exe    Node 22 LTS officiel, SHA256 vérifié
 //     app/                sortie « standalone » de Next + statiques + prompts
 //       data/             VIDE — les données réelles vivent dans %LOCALAPPDATA%
@@ -378,11 +378,13 @@ export async function assemble({
 
   // 9 bis. Mentions des composants tiers. Les polices embarquées (DM Sans,
   // Plus Jakarta Sans, OFL 1.1) doivent être accompagnées de leur copyright et
-  // du texte de licence : le fichier suit l'application, à côté de LISEZ-MOI.
+  // du texte de licence, les données géographiques (lib/geo/data) de leurs
+  // sources et conditions : le fichier suit l'application, à côté de
+  // LISEZ-MOI.
   const notices = path.join(PROJECT, "THIRD_PARTY_NOTICES.txt");
   if (!fs.existsSync(notices)) throw new Error("THIRD_PARTY_NOTICES.txt absent à la racine du projet.");
   fs.copyFileSync(notices, path.join(PAYLOAD, "THIRD_PARTY_NOTICES.txt"));
-  log("THIRD_PARTY_NOTICES.txt copié (licences des polices)");
+  log("THIRD_PARTY_NOTICES.txt copié (licences des composants tiers : polices, données géographiques)");
 
   // 10. Variant de test : page d'information « ce que cet installeur va
   // faire », avec les tailles MESURÉES sur la charge utile finale. Livrée

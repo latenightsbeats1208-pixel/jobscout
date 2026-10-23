@@ -30,7 +30,10 @@ const nextConfig = (phase: string): NextConfig => ({
   // Les prompts et le schéma SQL sont lus à l'exécution via process.cwd().
   // On les déclare pour que le traceur les embarque dans la sortie standalone.
   outputFileTracingIncludes: {
-    "/api/**": ["./prompts/**/*", "./lib/db/schema.sql"],
+    "/api/**": ["./prompts/**/*", "./lib/db/schema.sql", "./lib/geo/data/*"],
+    // Base géographique du filtre par distance (lib/geo), lue à l'exécution par les pages Offres.
+    "/offres/**": ["./lib/geo/data/*"],
+    "/offres": ["./lib/geo/data/*"],
   },
   // Pas d'`outputFileTracingExcludes` ici, volontairement. Le traceur suit
   // `path.join(process.cwd(), "data", …)` et recopie donc la base et les
