@@ -2,7 +2,6 @@ import "server-only";
 import { getDb, asJson, parseJson, getSetting } from "./index";
 import { geoGeneration, haversineKm, resolveOfferLocation, type GeoPrecision } from "@/lib/geo";
 import { depOfInsee, roundKm } from "@/lib/distance/format";
-import { getDb, asJson, parseJson } from "./index";
 import type { ScrapedOffre } from "@/lib/scrapers/base";
 import type { ScoreResult } from "@/lib/ai/score-offre";
 import { classifyContract, CONTRACT_ORDER, type ContractCategory } from "@/lib/contracts";
@@ -549,24 +548,32 @@ export function newOffersFromLastScan(limit = 6): OffreSummary[] {
       has_cv: number;
       has_lm: number;
     }[];
-  return rows.map((row) => ({
-    id: row.id,
-    source: row.source,
-    url: row.url,
-    title: row.title,
-    company: row.company,
-    country: row.country,
-    location: row.location,
-    posted_at: row.posted_at,
-    score: row.score,
-    is_vie: row.is_vie,
-    description_status: row.description_status,
-    description_text: row.description_text.slice(0, 1000),
-    score_reason: parseJson<{ reason?: string } | null>(row.score_breakdown, null)?.reason ?? null,
-    contract_category: classifyContract({ contract_type: row.contract_type, title: row.title, description_text: row.description_text }),
-    has_cv: Boolean(row.has_cv),
-    has_lm: Boolean(row.has_lm),
-  }));
+  return rows.map((row) => {
+    const geo = resolveOfferLocation({ source: row.source, location: row.location, country: row.country });
+    return {
+      id: row.id,
+      source: row.source,
+      url: row.url,
+      title: row.title,
+      company: row.company,
+      country: row.country,
+      location: row.location,
+      posted_at: row.posted_at,
+      score: row.score,
+      is_vie: row.is_vie,
+      description_status: row.description_status,
+      description_text: row.description_text.slice(0, 1000),
+      score_reason: parseJson<{ reason?: string } | null>(row.score_breakdown, null)?.reason ?? null,
+      contract_category: classifyContract({ contract_type: row.contract_type, title: row.title, description_text: row.description_text }),
+      has_cv: Boolean(row.has_cv),
+      has_lm: Boolean(row.has_lm),
+      distance_km: null,
+      same_city: false,
+      same_dept: false,
+      geo_label: geo.label,
+      geo_precision: geo.precision,
+    };
+  });
 }
 
 export function newOffersFromLastScanCount(): number {

@@ -69,12 +69,10 @@ export function OffresList({
   const initialVieRef = useRef(initialVieOnly);
   const contractKey = [...contracts].sort().join(",");
   const vieFilter = contracts.has("vie");
-  const hasFilters = !!query || !!source || !!country || contracts.size > 0 || minScore || radius !== null;
-  const activeFilterCount = Number(!!source) + Number(!!country) + contracts.size + Number(minScore) + Number(radius !== null);
   const distanceFacets = result.facets.distance;
   const home = distanceFacets.home;
-  const hasFilters = !!query || !!source || !!country || contracts.size > 0 || minScore || newOnly;
-  const activeFilterCount = Number(!!source) + Number(!!country) + contracts.size + Number(minScore) + Number(newOnly);
+  const hasFilters = !!query || !!source || !!country || contracts.size > 0 || minScore || newOnly || radius !== null;
+  const activeFilterCount = Number(!!source) + Number(!!country) + contracts.size + Number(minScore) + Number(newOnly) + Number(radius !== null);
   const { countries, sources, contractCounts } = result.facets;
   const shown = result.offers;
   const remaining = Math.max(0, result.total - shown.length);
@@ -157,11 +155,10 @@ export function OffresList({
       }
     }, page > 1 ? 0 : query ? 250 : 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [query, source, country, contractKey, minScore, scoreThreshold, sortBy, radius, includeUnlocated, page, refreshKey]);
-  }, [query, source, country, contractKey, minScore, newOnly, scoreThreshold, sortBy, page, refreshKey]);
+  }, [query, source, country, contractKey, minScore, newOnly, scoreThreshold, sortBy, radius, includeUnlocated, page, refreshKey]);
 
   function reset() {
-    setQuery(""); setSource(""); setCountry(""); setContracts(new Set()); setMinScore(false); setRadius(null); setIncludeUnlocated(false); setSelectedId(null); setFiltersExpanded(false); setPage(1);
+    setQuery(""); setSource(""); setCountry(""); setContracts(new Set()); setMinScore(false); setNewOnly(false); setRadius(null); setIncludeUnlocated(false); setSelectedId(null); setFiltersExpanded(false); setPage(1);
   }
 
   useEffect(() => {

@@ -20,10 +20,9 @@ export default async function OffresPage({ searchParams }: { searchParams: Promi
   const minScore = parseMinScore(score);
   // Même requête que celle de la liste côté navigateur : ?vie=1 coche la puce contrat « V.I.E ».
   const home = getDistanceHome();
-  const initial = searchOffres({ contracts: vieOnly ? ["vie"] : [], minScore, home });
   // Ville du profil proposée (jamais enregistrée d'office) ; le sélecteur la masque tant qu'une ville est choisie.
   const homeSuggestion = suggestedDistanceHome();
-  const initial = searchOffres({ contracts: vieOnly ? ["vie"] : [], minScore, newOnly });
+  const initial = searchOffres({ contracts: vieOnly ? ["vie"] : [], minScore, home, newOnly });
   // Total et V.I.E lus dans les facettes (sans le filtre de score, pour décrire la base) : mêmes chiffres que la liste et la puce « V.I.E ».
   const { total, contractCounts } = initial.facets;
   const subtitle = [
@@ -40,8 +39,7 @@ export default async function OffresPage({ searchParams }: { searchParams: Promi
         subtitle={subtitle}
         actions={<ScanButton />}
       />
-      <OffresList initialResult={initial} initialVieOnly={vieOnly} initialMinScore={minScore} homeSuggestion={homeSuggestion} />
-      <OffresList initialResult={initial} initialVieOnly={vieOnly} initialMinScore={minScore} initialNewOnly={newOnly} />
+      <OffresList initialResult={initial} initialVieOnly={vieOnly} initialMinScore={minScore} homeSuggestion={homeSuggestion} initialNewOnly={newOnly} />
     </>
   );
 }
