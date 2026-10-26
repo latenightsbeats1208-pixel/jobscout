@@ -1,6 +1,8 @@
 import "server-only";
 import type { Scraper, ScrapedOffre, ScrapeCriteria, ProgressEvent } from "./base";
 import { htmlToText, newContext } from "./base";
+import { nameToCode } from "@/lib/countries";
+import { searchLocations } from "@/lib/zones";
 import { detectVie } from "@/lib/vie";
 import { normalizeCountryName, strictCountryName } from "@/lib/countries";
 import { decodeHtmlEntities, unescapeEscapedHtml } from "@/lib/text/entities";
@@ -61,7 +63,8 @@ export const linkedinScraper: Scraper = {
       const seen = new Set<string>();
       const cards: ListingCard[] = [];
 
-      const countries = criteria.countries.length ? criteria.countries : [""];
+      // Zones choisies (Île-de-France, Lyon, Genève…) à la place du pays entier.
+      const countries = searchLocations(criteria.countries, criteria.zones ?? [], "linkedin", nameToCode).map((l) => l.location);
       // 2 pages max par combinaison secteur×pays : avec une liste de pays large
       // (ex. francophonie), on couvre chaque pays au lieu d'épuiser le budget
       // sur la première combinaison.

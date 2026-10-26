@@ -9,6 +9,7 @@ const labels: Record<string, string> = {
   offres: "Offres",
   candidatures: "Candidatures",
   documents: "Documents",
+  "cv-template": "Modèle CV",
   profile: "Profil",
 };
 

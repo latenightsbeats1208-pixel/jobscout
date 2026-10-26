@@ -115,13 +115,23 @@ function apiJobToScraped(job: FtApiJob): ScrapedOffre | null {
   };
 }
 
-async function fetchApi(keywords: string, start: number, size: number): Promise<FtApiJob[]> {
+/** Départements des zones françaises, par paquets de 5 (limite de l'API) ; [null] = toute la France. */
+export function departementChunks(criteria: ScrapeCriteria): (string[] | null)[] {
+  const deps = [...new Set((criteria.zones ?? []).filter((z) => z.country === "FR").flatMap((z) => z.departements))];
+  if (!deps.length) return [null];
+  const out: string[][] = [];
+  for (let i = 0; i < deps.length; i += 5) out.push(deps.slice(i, i + 5));
+  return out;
+}
+
+async function fetchApi(keywords: string, start: number, size: number, departements: string[] | null = null): Promise<FtApiJob[]> {
   const token = await getToken();
   if (!token) return [];
   const params = new URLSearchParams({
     motsCles: keywords,
     range: `${start}-${start + size - 1}`,
   });
+  if (departements) params.set("departement", departements.join(","));
   const res = await fetch(`${API_BASE}/offres/search?${params}`, {
     headers: { accept: "application/json", authorization: `Bearer ${token}` },
   });
@@ -177,12 +187,14 @@ function parseHtmlSearch(html: string): HtmlCard[] {
   return out;
 }
 
-async function fetchHtmlPage(keywords: string, page: number): Promise<HtmlCard[]> {
+async function fetchHtmlPage(keywords: string, page: number, departements: string[] | null = null): Promise<HtmlCard[]> {
   const params = new URLSearchParams({
     motsCles: keywords,
     offresPartenaires: "true",
     page: String(page),
   });
+  // Lieux du moteur de recherche du site : « 75D » = département 75.
+  if (departements) params.set("lieux", departements.map((d) => `${d}D`).join(","));
   const res = await fetch(`${SEARCH_PAGE}?${params}`, { headers: BROWSER_HEADERS });
   if (!res.ok) throw new Error(`France Travail HTTP ${res.status}`);
   return parseHtmlSearch(await res.text());
@@ -235,22 +247,26 @@ export const francetravailScraper: Scraper = {
 
     const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
     const wantsFrance =
-      !criteria.countries.length || criteria.countries.some((c) => norm(c) === "france");
+      !criteria.countries.length ||
+      criteria.countries.some((c) => norm(c) === "france") ||
+      (criteria.zones ?? []).some((z) => z.country === "FR");
     if (!wantsFrance) {
       onEvent({ kind: "list", source: SOURCE, total: 0 });
       onEvent({ kind: "done", source: SOURCE, seen: 0, ok: 0, failed: 0 });
       return;
     }
 
-    const max = criteria.maxOffres ?? 50;
+    const chunks = departementChunks(criteria);
+    // Budget par paquet de départements : Paris et Lyon ne se partagent pas 50 offres.
+    const max = criteria.maxOffres ?? 50 * chunks.length;
     const queries = criteria.sectors.length ? criteria.sectors : [""];
 
     // Stratégie 1 : API officielle (descriptions complètes, aucun fetch détail nécessaire)
     const apiOffres = new Map<string, ScrapedOffre>();
-    for (const q of queries) {
+    for (const deps of chunks) for (const q of queries) {
       let start = 0;
       while (apiOffres.size < max && start < 150) {
-        const jobs = await fetchApi(q, start, 50);
+        const jobs = await fetchApi(q, start, 50, deps);
         if (!jobs.length) break;
         for (const j of jobs) {
           const o = apiJobToScraped(j);
@@ -278,10 +294,10 @@ export const francetravailScraper: Scraper = {
 
     // Stratégie 2 : HTML fallback
     const seen = new Map<string, HtmlCard>();
-    for (const q of queries) {
+    for (const deps of chunks) for (const q of queries) {
       for (let page = 1; page <= 3 && seen.size < max; page++) {
         try {
-          const cards = await fetchHtmlPage(q, page);
+          const cards = await fetchHtmlPage(q, page, deps);
           if (!cards.length) break;
           for (const c of cards) if (!seen.has(c.id)) seen.set(c.id, c);
           if (cards.length < 10) break;

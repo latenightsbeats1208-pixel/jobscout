@@ -111,6 +111,14 @@ Page Offres › « Définir ma ville » : choisissez votre ville de référence 
 
 Cascade selon le type de fichier : PDF (`pdf-parse` ou `pdfjs-dist` multi-colonnes, meilleur retenu), DOCX (`mammoth`), image (`tesseract.js` FR+EN), TXT. Les modèles de reconnaissance d'image (FR, EN) sont téléchargés une fois depuis `cdn.jsdelivr.net`. Puis extraction structurée par le fournisseur d'IA choisi (appel d'outil forcé, ou réponse JSON contrainte selon le fournisseur), validation Zod, score de confiance et **garde-fou anti-hallucination** (suppression des entreprises et compétences non ancrées dans le profil).
 
+## Modèle de CV maître (facultatif)
+
+Page **Modèle CV** : un CV « maître » en JSON (clusters de postes, banque de puces étiquetées, blocs de compétences, FR et EN). S'il existe, chaque CV est **assemblé** à partir de vos textes au lieu d'être rédigé : l'IA (ou, sans clé, un choix par mots-clés) choisit le cluster, l'intitulé exact de l'offre, les puces et jusqu'à 5 mots-clés de l'annonce déjà présents dans vos compétences ; le code vérifie chaque choix (une seule version par fait, limites par entrée). La lettre de motivation ne s'appuie que sur les faits de ce CV. Les emplacements non remplis (`[N]`, `[mois]`) sont signalés à chaque génération. Un fichier `cv-template.json` déposé dans le dossier de données est importé au premier accès (`lib/cvtemplate`).
+
+## Zones de recherche
+
+Profil › **Zones de recherche** : Paris et Île-de-France, Lyon et agglomération, Suisse romande. Le scan interroge ces lieux (France Travail par département, LinkedIn et Talent.com par ville) et la page Offres s'ouvre filtrée sur « Mes zones » (`lib/zones.ts`).
+
 ## Génération de documents
 
 `data/documents/…` — CV et lettre en PDF **et** DOCX, avec une boucle de rétrécissement qui garantit une page A4. Langue détectée par offre (français, ou anglais si l'annonce est en anglais). Relecture automatique : orthographe, affirmations non étayées par le profil. Message court (V.I.E) réservé aux offres V.I.E.

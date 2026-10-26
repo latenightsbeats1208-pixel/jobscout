@@ -5,6 +5,9 @@ import { defineConfig } from "vitest/config";
 const root = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  // tsconfig laisse le JSX à Next (« preserve ») : les tests qui rendent un PDF
+  // (composants react-pdf en .tsx) ont besoin de le transformer eux-mêmes.
+  oxc: { jsx: { runtime: "automatic" } },
   resolve: {
     alias: {
       "@": root,

@@ -39,6 +39,30 @@ export function buildDocFilename(args: {
   return `${parts.join(" - ")}.${args.format}`;
 }
 
+/**
+ * Nom du fichier téléchargé, celui que voit le recruteur :
+ * « Loick-Balloy-CV-Entreprise-Intitule.pdf » (ASCII, tirets, sans espaces).
+ */
+export function downloadFilename(args: {
+  type: string;
+  format: string;
+  fullName: string | null | undefined;
+  company: string | null | undefined;
+  title: string | null | undefined;
+}): string {
+  const part = (s: string | null | undefined, max: number) =>
+    (s ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Za-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, max)
+      .replace(/-+$/, "");
+  const label = TYPE_LABEL[args.type] ?? args.type.toUpperCase();
+  const parts = [part(args.fullName, 40), label, part(args.company, 30), part(args.title, 50)].filter(Boolean);
+  return `${parts.join("-")}.${args.format}`;
+}
+
 /** Returns the user-configured documents folder (settings table) or the default one. */
 function docsRootResolved(): string {
   const userFolder = getSetting("documents_folder");

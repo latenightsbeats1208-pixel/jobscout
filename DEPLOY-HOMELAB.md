@@ -51,18 +51,42 @@ Open `http://<JOBSCOUT_HOST>` (or `https://`) from any device on your tailnet.
 
 ## 4. First use
 
-1. Log in with `JOBSCOUT_PASSWORD`.
-2. Onboarding: choose the AI provider and paste your key (see [GUIDE-IA.md](GUIDE-IA.md)),
+1. Copy your master CV template next to the database **before** the first start
+   (or import it later from the **Modèle CV** page):
+   ```bash
+   cp cv-template.json ./data/cv-template.json
+   ```
+   It is imported on first access. It contains your phone and e-mail, so keep it
+   out of git (`cv-template.json` is in `.gitignore`).
+2. Log in with `JOBSCOUT_PASSWORD`.
+3. Onboarding: choose the AI provider and paste your key (see [GUIDE-IA.md](GUIDE-IA.md)),
    then upload your CV, check the extracted profile, and set preferences (target
-   countries, sectors, contracts, sources).
-3. Click **Lancer un scan** once. After that, the daily scan runs every morning.
+   countries **France and Suisse**, sectors, contracts, sources).
+4. **Profil › Zones de recherche**: select *Paris et Île-de-France*, *Lyon et agglomération*
+   and *Suisse romande*. The scan then searches those places instead of the
+   whole country, and the Offres page opens filtered on **Mes zones**.
+5. **Modèle CV › À compléter avant d'envoyer**: fill the `[N]` and `[mois]`
+   placeholders. Until they are filled, every generated CV lists them as warnings.
+6. Click **Lancer un scan** once. After that, the daily scan runs every morning.
+
+## Daily routine
+
+1. Open **Offres**: new offers in your zones are already scored.
+2. Open an offer: the panel shows the probable CV cluster (A–E) and an **Aperçu** link
+   (free preview, no AI).
+3. **Générer les documents**: the AI picks the cluster, the exact job title, the
+   bullets and up to 5 keywords from the ad, but every word comes from your
+   template. The cover letter may only use the facts of that CV. Without an AI
+   key, the same choice is made automatically by keyword matching.
+4. Download the Word or PDF file (`Loick-Balloy-CV-Company-Title.pdf`),
+   then **Postuler** to open the ad and track the application.
 
 ### Which sources for which location
 
 | Target | Sources to enable |
 |---|---|
 | France | France Travail (official API recommended: `FT_CLIENT_ID` / `FT_CLIENT_SECRET` from francetravail.io), HelloWork, Welcome to the Jungle |
-| Switzerland (Geneva, Lausanne, Zurich) | LinkedIn, Talent.com, Welcome to the Jungle. France Travail only covers France. |
+| French-speaking Switzerland (Geneva, Lausanne, Neuchâtel, Fribourg, Sion) | LinkedIn, Talent.com, Welcome to the Jungle. France Travail only covers France. |
 
 Read [CGU.md](CGU.md) (sections 5 and 6) before enabling the sites other than France Travail.
 

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDocument, buildDocFilename } from "@/lib/db/documents";
+import { getDocument, downloadFilename } from "@/lib/db/documents";
 import { getOffre } from "@/lib/db/offres";
 import { getProfile } from "@/lib/db/queries";
 import fs from "node:fs";
+import { cleanJobTitle } from "@/lib/text/typography";
 
 export const runtime = "nodejs";
 
@@ -25,11 +26,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const profile = getProfile();
   const offre = doc.offre_id ? getOffre(doc.offre_id) : null;
-  const filename = buildDocFilename({
+  const filename = downloadFilename({
     type: doc.type,
     format: doc.format,
     fullName: profile?.full_name ?? null,
-    title: offre?.title ?? null,
+    company: offre?.company ?? null,
+    title: offre?.title ? cleanJobTitle(offre.title) : null,
   });
 
   const buffer = fs.readFileSync(doc.file_path);

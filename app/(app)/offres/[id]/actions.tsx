@@ -1,11 +1,14 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Check, FileText, Mail, MessageSquare, Download, Sparkles, FolderOpen, ArrowUpRight, BookmarkPlus, Send } from "lucide-react";
+import { Check, FileText, Mail, MessageSquare, Download, Sparkles, FolderOpen, ArrowUpRight, BookmarkPlus, Send, AlertTriangle, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+
+/** Résumé renvoyé par /api/generate/* quand le CV vient du modèle maître. */
+type TemplateInfo = { cluster: string; clusterName: string; headline: string; mode: string; warnings: string[] };
 
 type DocsState = {
   cv_pdf_id: number | null;
@@ -47,6 +50,7 @@ export function ActionsPanel({
   initialTrackingStatus = null,
   initialFolder = null,
   canOpenFolder = true,
+  templateCluster = null,
 }: {
   offreId: number;
   offreUrl: string;
@@ -62,6 +66,8 @@ export function ActionsPanel({
   initialFolder?: string | null;
   /** Faux sur un serveur distant : pas d'explorateur de fichiers à ouvrir. */
   canOpenFolder?: boolean;
+  /** Cluster probable (choix automatique) quand un modèle de CV existe. */
+  templateCluster?: { id: string; name: string } | null;
 }) {
   const [docs, setDocs] = useState<DocsState>(initial);
   const [allLoading, setAllLoading] = useState(false);
@@ -73,6 +79,7 @@ export function ActionsPanel({
   const [justApplied, setJustApplied] = useState(false);
   const [trackingStatus, setTrackingStatus] = useState<string | null>(initialTrackingStatus);
   const [folder, setFolder] = useState<string | null>(initialFolder);
+  const [templateInfo, setTemplateInfo] = useState<TemplateInfo | null>(null);
 
   // Un document existe dès qu'un de ses deux formats est enregistré : sur un
   // échec survenu entre l'écriture du PDF et celle du DOCX, la ligne doit
@@ -99,6 +106,7 @@ export function ActionsPanel({
         const data = await res.json().catch(() => null);
         // Échec partiel possible : la route signale ce qui a quand même été
         // généré — on met à jour l'état pour ne pas laisser de document orphelin.
+        if (data?.template) setTemplateInfo(data.template);
         if (data?.cv || data?.lm) {
           setDocs((d) => ({
             ...d,
@@ -115,6 +123,7 @@ export function ActionsPanel({
         setError("Réponse du serveur illisible — réessayez.");
         return;
       }
+      setTemplateInfo(data.template ?? null);
       setDocs((d) => ({
         ...d,
         cv_pdf_id: data.cv.pdfId,
@@ -269,6 +278,35 @@ export function ActionsPanel({
           ? "Régénérer les documents"
           : "Générer les documents"}
       </Button>
+
+      {templateCluster && !templateInfo && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 py-2 text-small">
+          <span className="text-textSecondary">
+            Modèle CV : cluster probable <span className="font-semibold text-text">{templateCluster.id}</span> · {templateCluster.name}
+          </span>
+          <a href={`/api/cv-template/preview?offreId=${offreId}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
+            <Eye className="h-3.5 w-3.5" /> Aperçu
+          </a>
+        </div>
+      )}
+
+      {templateInfo && (
+        <div className="space-y-2 rounded-md border border-border bg-surface px-3 py-2.5 text-small">
+          <p className="text-textSecondary">
+            CV assemblé depuis votre modèle : cluster <span className="font-semibold text-text">{templateInfo.cluster}</span> · {templateInfo.clusterName}
+            {templateInfo.mode === "ai" ? " (choisi par l'IA)" : " (choix automatique)"}. Titre : « {templateInfo.headline} ».
+          </p>
+          {templateInfo.warnings.length > 0 && (
+            <ul className="space-y-1">
+              {templateInfo.warnings.map((w, i) => (
+                <li key={i} className="flex items-start gap-1.5 text-text">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" aria-hidden="true" /> {w}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Download row — primary DOCX, secondary PDF.
           Chaque ligne est conditionnée à SES PROPRES identifiants : en succès

@@ -6,6 +6,7 @@ import {
   ENGINE_MISSING_MESSAGE,
 } from "./browser-engine";
 import { decodeHtmlEntities } from "@/lib/text/entities";
+import type { Zone } from "@/lib/zones";
 
 export type ScrapedOffre = {
   source_id: string;
@@ -29,6 +30,8 @@ export type ScrapeCriteria = {
   sectors: string[];
   countries: string[];
   maxOffres?: number;
+  /** Zones de recherche (lib/zones) : chaque source cible leurs lieux au lieu du pays entier. */
+  zones?: Zone[];
 };
 
 export type ProgressEvent =

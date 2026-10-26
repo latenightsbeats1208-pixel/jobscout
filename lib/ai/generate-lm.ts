@@ -43,7 +43,9 @@ let _system: string | null = null; // v3 — langue de sortie + chronologie dat�
 export async function generateLM(
   profile: ProfileFull,
   offre: OffreFiltered,
-  lang: DocLang = detectDocLanguage(offre.title, offre.description_text, sourceLanguageHint(offre.source, offre.raw_payload), offre.country)
+  lang: DocLang = detectDocLanguage(offre.title, offre.description_text, sourceLanguageHint(offre.source, offre.raw_payload), offre.country),
+  /** Faits autorisés à la place du digest du profil : le texte du CV assemblé depuis le modèle maître. */
+  opts: { facts?: string } = {}
 ): Promise<GeneratedLM> {
   if (!_system) _system = fs.readFileSync(path.join(process.cwd(), "prompts", "generate-lm.md"), "utf-8");
   const message = await callStructured({
@@ -54,7 +56,7 @@ export async function generateLM(
     user:
       `${lmLanguageInstruction(lang)}
 
-## Faits du profil — SEULE source autorisée pour le §2 (dates, puces, outils par expérience)\n${profileFacts(profile)}\n\n` +
+## Faits du profil — SEULE source autorisée pour le §2 (dates, puces, outils par expérience)\n${opts.facts ?? profileFacts(profile)}\n\n` +
       `## Offre\n- Titre: ${offre.title}\n- Entreprise: ${offre.company || "(non précisée dans l'annonce)"}\n- Lieu de l'offre: ${[offre.location, offre.country].filter(Boolean).join(", ") || "(non précisé)"}\n- Ville du candidat: ${profile.location ?? "(non précisée)"}\n- Description:\n${offre.description_text.slice(0, 5000)}\n\nRédige la lettre de motivation${lang === "en" ? " — entièrement en anglais" : ""}.`,
   });
   assertNotTruncated(message, "la lettre de motivation");

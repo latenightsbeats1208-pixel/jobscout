@@ -9,6 +9,7 @@ import { AiSettings } from "@/components/app/ai-settings";
 import { CleanupButton } from "@/components/app/cleanup-button";
 import { ProfileSwitcher } from "@/components/app/profile-switcher";
 import { ProfileEditor } from "./profile-editor";
+import { ZonesSettings } from "@/components/app/zones-settings";
 import { isServerMode } from "@/lib/server-mode";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +46,8 @@ export default async function ProfilePage() {
       <div className="mb-8"><ProfileSwitcher currentName={profile.full_name ?? null} /></div>
 
       <ProfileEditor initial={profile} />
+
+      <div className="mt-8"><ZonesSettings /></div>
 
       {/* Ancre #parametres : cible des liens « Profil › Génération IA » ; la carte IA est la première de la section. */}
       <section id="parametres" aria-labelledby="parametres-title" className="mt-12 scroll-mt-28 border-t border-border pt-8">

@@ -1,5 +1,6 @@
 import "server-only";
 import { geoGeneration, haversineKm, resolveOfferLocation, type GeoPrecision } from "@/lib/geo";
+import { inZones, type Zone } from "@/lib/zones";
 import { depOfInsee, roundKm } from "@/lib/distance/format";
 import { getDb, asJson, parseJson } from "./index";
 import type { ScrapedOffre } from "@/lib/scrapers/base";
@@ -96,7 +97,7 @@ export type OffersSearch = {
   offers: OffreSummary[];
   total: number;
   pageSize: number;
-  facets: BaseFacets & { distance: DistanceFacets };
+  facets: BaseFacets & { distance: DistanceFacets; zones: { labels: string[]; count: number } };
 };
 
 const OFFER_PAGE_SIZE = 24;
@@ -311,6 +312,10 @@ export function searchOffres(opts: {
   radiusKm?: number | null;
   /** Avec un rayon : garder aussi les offres dont la distance est inconnue. */
   includeUnlocated?: boolean;
+  /** Zones de recherche choisies (lib/zones) : comptées dans les facettes. */
+  zones?: Zone[];
+  /** Ne garder que les offres situées dans ces zones. */
+  zonesOnly?: boolean;
   page?: number;
 } = {}): OffersSearch {
   const cache = getOffresCache();
@@ -328,6 +333,20 @@ export function searchOffres(opts: {
     return true;
   });
 
+  // Zones de recherche : comptées sur les offres filtrées, appliquées sur demande.
+  const zones = opts.zones ?? [];
+  let zoneCount = 0;
+  const zoneIds = new Set<number>();
+  if (zones.length) {
+    for (const row of filtered) {
+      if (inZones({ lat: row.geo_lat, lng: row.geo_lng, precision: row.geo_precision, code: row.geo_code }, zones)) {
+        zoneIds.add(row.id);
+        zoneCount++;
+      }
+    }
+  }
+  const zoned = zones.length && opts.zonesOnly ? filtered.filter((row) => zoneIds.has(row.id)) : filtered;
+
   // Distance : calculée à la volée depuis la ville de référence, à chaque requête
   // (positions des offres prêtes dans le cache), jamais enregistrée ni intégrée au score.
   const home = opts.home ?? null;
@@ -340,7 +359,7 @@ export function searchOffres(opts: {
   const counts: Record<string, number> = Object.fromEntries(DISTANCE_BUCKETS.map((radius) => [String(radius), 0]));
   let located = 0;
   if (home) {
-    for (const row of filtered) {
+    for (const row of zoned) {
       if (row.geo_lat === null || row.geo_lng === null) {
         distances.set(row.id, null);
         if (row.geo_unlocated_fr) unlocatedFr++;
@@ -360,7 +379,7 @@ export function searchOffres(opts: {
     }
   }
   const radius = home && typeof opts.radiusKm === "number" && opts.radiusKm >= 0 ? opts.radiusKm : null;
-  const inRadius = radius === null ? filtered : filtered.filter((row) => {
+  const inRadius = radius === null ? zoned : zoned.filter((row) => {
     const km = distances.get(row.id);
     if (km === null || km === undefined) return !!opts.includeUnlocated && row.geo_unlocated_fr;
     return sameCity.has(row.id) || (radius > 0 && roundKm(km) <= radius);
@@ -418,6 +437,7 @@ export function searchOffres(opts: {
         home: home ? { code: home.code, label: home.label } : null,
         counts, located, unlocated: home ? unlocatedFr : 0,
       },
+      zones: { labels: zones.map((z) => z.label), count: zoneCount },
     },
   };
 }

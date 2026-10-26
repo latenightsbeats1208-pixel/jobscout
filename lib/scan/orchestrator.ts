@@ -7,6 +7,7 @@ import { registerScanForRepairs } from "@/lib/db/repair-markup";
 import { scoreOffresLocal } from "@/lib/scoring/local";
 import { getProfile } from "@/lib/db/queries";
 import { getDb } from "@/lib/db";
+import { getSearchZones } from "@/lib/zones-store";
 import type { ProgressEvent } from "@/lib/scrapers/base";
 
 export type OrchestratorEvent =
@@ -70,7 +71,7 @@ export async function* runScan(
     const pendingScoring: OrchestratorEvent[] = [];
 
     try {
-      const criteria = { sectors: profile.sectors, countries: profile.target_countries };
+      const criteria = { sectors: profile.sectors, countries: profile.target_countries, zones: getSearchZones() };
       const progressQueue: ProgressEvent[] = [];
       const onEvent = (e: ProgressEvent) => progressQueue.push(e);
 

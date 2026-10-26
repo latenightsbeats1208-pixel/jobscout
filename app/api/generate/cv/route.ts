@@ -7,6 +7,8 @@ import { fitCVToOnePage } from "@/lib/pdf/render";
 import { renderCVDocx } from "@/lib/docx/render";
 import { saveDocument } from "@/lib/db/documents";
 import { detectDocLanguage, sourceLanguageHint } from "@/lib/text/lang";
+import { getCvTemplate } from "@/lib/cvtemplate/store";
+import { generateTemplateCv } from "@/lib/cvtemplate/generate";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -22,12 +24,25 @@ export async function POST(req: NextRequest) {
     // Langue des documents : déduite de l'offre (anglais si elle domine nettement),
     // transmise au modèle, au validateur, à la relecture et aux templates.
     const lang = detectDocLanguage(offre.title, offre.description_text, sourceLanguageHint(offre.source, offre.raw_payload), offre.country);
+    const meta = { company: offre.company, title: offre.title };
+    const template = getCvTemplate();
+    if (template) {
+      const r = await generateTemplateCv(template, offre, lang);
+      const pdfDoc = saveDocument({ type: "cv", offreId: offre.id, format: "pdf", buffer: r.pdf, meta });
+      saveDocument({ type: "cv", offreId: offre.id, format: "docx", buffer: r.docx, meta });
+      return NextResponse.json({
+        ok: true,
+        document_id: pdfDoc.id,
+        language: lang,
+        template: { cluster: r.doc.cluster.id, clusterName: r.doc.cluster.name, headline: r.doc.headline, mode: r.doc.mode, warnings: r.doc.warnings },
+      });
+    }
+
     const initialCV = await generateCV(profile, offre, lang);
     // Fit to 1 page — returns the (possibly shrunk) cv data + the validated PDF
     const { pdf, cv } = await fitCVToOnePage(initialCV, lang);
     const docx = await renderCVDocx(cv, lang); // DOCX uses the SAME shrunk content
 
-    const meta = { company: offre.company, title: offre.title };
     const pdfDoc = saveDocument({ type: "cv", offreId: offre.id, format: "pdf", buffer: pdf, meta });
     saveDocument({ type: "cv", offreId: offre.id, format: "docx", buffer: docx, meta });
 

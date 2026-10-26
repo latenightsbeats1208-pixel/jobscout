@@ -3,6 +3,7 @@ import { CONTRACT_ORDER, type ContractCategory } from "@/lib/contracts";
 import { parseMinScore, searchOffres, type OffersSort } from "@/lib/db/offres";
 import { getDistanceHome } from "@/lib/distance/home";
 import { isDistanceRadius } from "@/lib/distance/format";
+import { getSearchZones } from "@/lib/zones-store";
 
 export const runtime = "nodejs";
 
@@ -30,6 +31,9 @@ export async function GET(req: NextRequest) {
     home: getDistanceHome(),
     radiusKm,
     includeUnlocated: params.get("unlocated") === "1",
+    // Zones choisies (Profil › Recherche), lues côté serveur ; ?zones=1 n'en garde que les offres.
+    zones: getSearchZones(),
+    zonesOnly: params.get("zones") === "1",
     page: Number.isFinite(page) ? page : 1,
   });
   return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });

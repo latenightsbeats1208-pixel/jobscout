@@ -34,8 +34,11 @@ export function OffresList({
   initialVieOnly = false,
   initialMinScore = 0,
   homeSuggestion = null,
+  initialZonesOnly = false,
 }: {
   initialResult: OffersSearch;
+  /** Zones de recherche configurées : la liste démarre filtrée sur elles. */
+  initialZonesOnly?: boolean;
   initialVieOnly?: boolean;
   initialMinScore?: number;
   /** Commune proposée d'après le lieu du profil, tant qu'aucune ville de référence n'est choisie. */
@@ -54,6 +57,7 @@ export function OffresList({
   // Distance : rayon en km (0 = dans la commune), null = toutes distances.
   const [radius, setRadius] = useState<number | null>(null);
   const [includeUnlocated, setIncludeUnlocated] = useState(false);
+  const [zonesOnly, setZonesOnly] = useState(initialZonesOnly);
   const [result, setResult] = useState(initialResult);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -66,8 +70,8 @@ export function OffresList({
   const initialVieRef = useRef(initialVieOnly);
   const contractKey = [...contracts].sort().join(",");
   const vieFilter = contracts.has("vie");
-  const hasFilters = !!query || !!source || !!country || contracts.size > 0 || minScore || radius !== null;
-  const activeFilterCount = Number(!!source) + Number(!!country) + contracts.size + Number(minScore) + Number(radius !== null);
+  const hasFilters = !!query || !!source || !!country || contracts.size > 0 || minScore || radius !== null || zonesOnly;
+  const activeFilterCount = Number(!!source) + Number(!!country) + contracts.size + Number(minScore) + Number(radius !== null) + Number(zonesOnly);
   const distanceFacets = result.facets.distance;
   const home = distanceFacets.home;
   const { countries, sources, contractCounts } = result.facets;
@@ -123,6 +127,7 @@ export function OffresList({
     if (minScore) params.set("minScore", String(scoreThreshold));
     if (radius !== null) params.set("radius", String(radius));
     if (radius !== null && includeUnlocated) params.set("unlocated", "1");
+    if (zonesOnly) params.set("zones", "1");
     setLoading(true);
     setError(false);
     const timer = window.setTimeout(async () => {
@@ -143,10 +148,10 @@ export function OffresList({
       }
     }, page > 1 ? 0 : query ? 250 : 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [query, source, country, contractKey, minScore, scoreThreshold, sortBy, radius, includeUnlocated, page, refreshKey]);
+  }, [query, source, country, contractKey, minScore, scoreThreshold, sortBy, radius, includeUnlocated, zonesOnly, page, refreshKey]);
 
   function reset() {
-    setQuery(""); setSource(""); setCountry(""); setContracts(new Set()); setMinScore(false); setRadius(null); setIncludeUnlocated(false); setSelectedId(null); setFiltersExpanded(false); setPage(1);
+    setQuery(""); setSource(""); setCountry(""); setContracts(new Set()); setMinScore(false); setRadius(null); setIncludeUnlocated(false); setZonesOnly(false); setSelectedId(null); setFiltersExpanded(false); setPage(1);
   }
 
   useEffect(() => {
@@ -211,6 +216,11 @@ export function OffresList({
             </Chip>
           ))}
           <Chip active={minScore} onClick={() => { setMinScore(!minScore); setPage(1); }}>Score {scoreThreshold}+</Chip>
+          {result.facets.zones.labels.length > 0 && (
+            <Chip active={zonesOnly} onClick={() => { setZonesOnly(!zonesOnly); setPage(1); }}>
+              Mes zones <span className="font-normal tabular-nums">{numberFormat.format(result.facets.zones.count)}</span>
+            </Chip>
+          )}
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">

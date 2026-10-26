@@ -120,8 +120,8 @@ function parseSearchPage(html: string, domain: Domain): Card[] {
   return out;
 }
 
-async function fetchSearchPage(domain: Domain, keywords: string, page: number): Promise<Card[]> {
-  const params = new URLSearchParams({ k: keywords, l: "" });
+async function fetchSearchPage(domain: Domain, keywords: string, page: number, location = ""): Promise<Card[]> {
+  const params = new URLSearchParams({ k: keywords, l: location });
   if (page > 1) params.set("p", String(page));
   const res = await fetch(`https://${domain.host}/jobs?${params}`, { headers: BROWSER_HEADERS });
   if (!res.ok) throw new Error(`Talent.com ${domain.host} HTTP ${res.status}`);
@@ -183,8 +183,9 @@ export const talentScraper: Scraper = {
     onEvent({ kind: "start", source: SOURCE });
 
     // Sélection des domaines Talent selon les pays cibles du profil.
+    const zones = criteria.zones ?? [];
     const targetCodes = new Set(
-      criteria.countries.map((c) => nameToCode(c)).filter((c): c is string => !!c)
+      [...criteria.countries.map((c) => nameToCode(c)), ...zones.map((z) => z.country)].filter((c): c is string => !!c)
     );
     const activeDomains = targetCodes.size
       ? DOMAINS.filter((d) => d.codes.some((c) => targetCodes.has(c)))
@@ -203,10 +204,13 @@ export const talentScraper: Scraper = {
 
     for (const domain of activeDomains) {
       let domainCount = 0;
-      for (const q of queries) {
+      // Villes des zones de ce pays (Genève, Lausanne…), sinon le pays entier.
+      const cities = zones.filter((z) => domain.codes.includes(z.country)).flatMap((z) => z.talent);
+      const locations = cities.length ? cities : [""];
+      for (const location of locations) for (const q of queries) {
         for (let page = 1; page <= 2 && domainCount < perDomain; page++) {
           try {
-            const cards = await fetchSearchPage(domain, q, page);
+            const cards = await fetchSearchPage(domain, q, page, location);
             if (!cards.length) break;
             for (const c of cards) {
               if (!seen.has(c.id) && domainCount < perDomain) {

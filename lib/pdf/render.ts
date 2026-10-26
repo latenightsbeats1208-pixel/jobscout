@@ -8,7 +8,7 @@ import type { GeneratedLM } from "@/lib/ai/generate-lm";
 import type { DocLang } from "@/lib/text/lang";
 
 // pdf-parse expose numpages — usage en .js pour éviter l'effet de bord d'import
-async function pdfPageCount(buf: Buffer): Promise<number> {
+export async function pdfPageCount(buf: Buffer): Promise<number> {
   const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default as (
     b: Buffer
   ) => Promise<{ numpages: number }>;

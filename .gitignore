@@ -21,6 +21,8 @@ next-env.d.ts
 
 # Données de l'utilisateur et bases SQLite, quel que soit leur dossier
 /data/
+# Modèle de CV maître (données personnelles : téléphone, e-mail)
+cv-template.json
 /demo-profiles/
 *.db
 *.db-*
