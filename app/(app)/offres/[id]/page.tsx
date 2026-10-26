@@ -11,6 +11,7 @@ import { ActionsPanel } from "./actions";
 import { formatRelativeDate, scoreColor } from "@/lib/utils";
 import { CONTRACT_LABELS } from "@/lib/contracts";
 import { SOURCES_META } from "@/lib/sources-meta";
+import { isServerMode } from "@/lib/server-mode";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +86,7 @@ export default async function OffreDetailPage({ params }: { params: Promise<{ id
             initial={{ cv_pdf_id: cvPdf?.id ?? null, cv_docx_id: cvDocx?.id ?? null, lm_pdf_id: lmPdf?.id ?? null, lm_docx_id: lmDocx?.id ?? null, msg_id: msgDoc?.id ?? null }}
             initialTrackingStatus={existingApplication?.status ?? null}
             initialFolder={docs.length > 0 ? offreFolderPath(offre.id, offre.company, offre.title) : null}
+            canOpenFolder={!isServerMode()}
           />
           {offre.score_breakdown && (
             <section aria-labelledby="score-title" className="glass-panel p-5">

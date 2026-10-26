@@ -46,6 +46,7 @@ export function ActionsPanel({
   initial,
   initialTrackingStatus = null,
   initialFolder = null,
+  canOpenFolder = true,
 }: {
   offreId: number;
   offreUrl: string;
@@ -59,6 +60,8 @@ export function ActionsPanel({
   };
   initialTrackingStatus?: string | null;
   initialFolder?: string | null;
+  /** Faux sur un serveur distant : pas d'explorateur de fichiers à ouvrir. */
+  canOpenFolder?: boolean;
 }) {
   const [docs, setDocs] = useState<DocsState>(initial);
   const [allLoading, setAllLoading] = useState(false);
@@ -121,7 +124,7 @@ export function ActionsPanel({
       }));
       if (data.folder) {
         setFolder(data.folder);
-        openFolder(data.folder);
+        if (canOpenFolder) openFolder(data.folder);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur réseau");
@@ -154,7 +157,7 @@ export function ActionsPanel({
       if (data.text) setMsgPreview({ text: data.text, length: data.length });
       if (data.folder) {
         setFolder(data.folder);
-        openFolder(data.folder);
+        if (canOpenFolder) openFolder(data.folder);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erreur réseau");
@@ -290,7 +293,7 @@ export function ActionsPanel({
               pdfId={docs.lm_pdf_id}
             />
           )}
-          {folder && (
+          {folder && canOpenFolder && (
             <button
               onClick={() => openFolder(folder)}
               className="w-full inline-flex items-center justify-center gap-1.5 text-small text-textSecondary hover:text-text py-1"

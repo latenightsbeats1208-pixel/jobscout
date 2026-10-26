@@ -9,6 +9,7 @@ import { AiSettings } from "@/components/app/ai-settings";
 import { CleanupButton } from "@/components/app/cleanup-button";
 import { ProfileSwitcher } from "@/components/app/profile-switcher";
 import { ProfileEditor } from "./profile-editor";
+import { isServerMode } from "@/lib/server-mode";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,7 @@ export default async function ProfilePage() {
         <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-textSecondary">Configuration</p>
         <h2 id="parametres-title" className="font-display text-h2">Paramètres et données</h2>
         <p className="mt-1 max-w-[65ch] text-body text-textSecondary">Choisissez votre mode de génération et l'emplacement des fichiers. Vous pouvez aussi nettoyer ou remplacer le profil.</p>
-        <div className="mt-6 space-y-5"><AiSettings /><SettingsFolder /></div>
+        <div className="mt-6 space-y-5"><AiSettings />{!isServerMode() && <SettingsFolder />}</div>
         <div className="mt-5 flex flex-wrap items-center gap-2">
           <CleanupButton />
           <Button asChild variant="secondary"><Link href="/onboarding/upload">Remplacer le profil <ArrowRight className="h-4 w-4" /></Link></Button>

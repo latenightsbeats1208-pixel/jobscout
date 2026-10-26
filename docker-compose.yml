@@ -1,0 +1,40 @@
+# JobScout sur un homelab : Traefik en reverse proxy, accès par Tailscale.
+# Les réglages se font dans le fichier .env à côté de ce fichier (voir .env.docker.example).
+services:
+  jobscout:
+    build:
+      context: .
+      args:
+        WITH_LINKEDIN: ${WITH_LINKEDIN:-1}
+    image: jobscout:local
+    container_name: jobscout
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      # Nom(s) d'hôte sous lesquels vous ouvrez JobScout, séparés par des virgules.
+      JOBSCOUT_ALLOWED_HOSTS: ${JOBSCOUT_HOST:?définissez JOBSCOUT_HOST dans .env}
+      # Mot de passe de connexion (obligatoire ici : l'app est joignable par le réseau).
+      JOBSCOUT_PASSWORD: ${JOBSCOUT_PASSWORD:?définissez JOBSCOUT_PASSWORD dans .env}
+      # Scan automatique chaque jour à cette heure (HH:MM, fuseau TZ) ; vide = désactivé.
+      JOBSCOUT_DAILY_SCAN: ${JOBSCOUT_DAILY_SCAN:-06:30}
+      # France Travail, API officielle (optionnel, https://francetravail.io).
+      FT_CLIENT_ID: ${FT_CLIENT_ID:-}
+      FT_CLIENT_SECRET: ${FT_CLIENT_SECRET:-}
+    volumes:
+      - ./data:/data
+    networks:
+      - traefik
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
+      traefik.http.routers.jobscout.rule: Host(`${JOBSCOUT_HOST}`)
+      traefik.http.routers.jobscout.entrypoints: ${TRAEFIK_ENTRYPOINT:-web}
+      traefik.http.services.jobscout.loadbalancer.server.port: "3000"
+      # Scans longs (jusqu'à 20 min) diffusés en flux : pas de compression qui bufferise.
+      traefik.http.services.jobscout.loadbalancer.responseforwarding.flushinterval: "100ms"
+
+networks:
+  traefik:
+    name: ${TRAEFIK_NETWORK:-traefik}
+    external: true

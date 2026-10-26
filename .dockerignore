@@ -1,0 +1,14 @@
+.git
+node_modules
+.next
+data
+installer/dist
+installer/output
+installer/runtime
+coverage
+*.db
+*.db-*
+.env
+.env.*
+!.env.example
+docker-compose.yml

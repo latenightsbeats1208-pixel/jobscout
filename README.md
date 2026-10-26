@@ -59,6 +59,10 @@ L'app démarre sur http://127.0.0.1:3000 (écoute limitée à la machine locale,
 
 **Messages npm normaux** : `npm warn deprecated node-domexception`, « packages are looking for funding », et, avec npm récent, le script d'installation de `tesseract.js` ignoré (il n'affiche qu'un appel aux dons). `npm audit --omit=dev`, qui ne regarde que ce qui tourne réellement, doit afficher `found 0 vulnerabilities` (le PostCSS embarqué par Next.js est forcé en version corrigée via `overrides`). `npm audit` complet signale des failles dans des outils de développement (Tailwind CSS et ses dépendances), sans effet sur l'application. **Ne lancez jamais `npm audit fix --force`** : il installerait Tailwind CSS 4, incompatible.
 
+## Serveur auto-hébergé (Docker)
+
+`docker compose up -d --build` lance JobScout en permanence sur un serveur (homelab, Traefik, Tailscale) : écoute sur `0.0.0.0`, connexion par mot de passe (`JOBSCOUT_PASSWORD`), noms d'hôte autorisés (`JOBSCOUT_ALLOWED_HOSTS`), scan automatique quotidien (`JOBSCOUT_DAILY_SCAN=HH:MM`). Pas à pas : [DEPLOY-HOMELAB.md](DEPLOY-HOMELAB.md).
+
 ## Paquet Windows
 
 `npm run package` produit `installer/output/JobScout_Setup_v<version>.exe` : un installeur autonome (Node 22 LTS embarqué, aucune dépendance sur la machine cible), avec launcher natif, données sous `%LOCALAPPDATA%\JobScout` et contrôle anti-fuite de données personnelles bloquant. Voir [`installer/README.md`](installer/README.md).
