@@ -228,7 +228,13 @@ final class AppController: NSObject, LauncherUI {
 
     func requestTermination(cause: String) {
         pendingCause = cause
-        NSApplication.shared.terminate(nil)
+        // Un signal arrive par un bloc de la file principale. terminate y
+        // ouvrirait l'attente de .terminateLater DANS ce bloc : la file
+        // principale, en série, ne servirait plus le bloc qui y répond, et le
+        // lanceur resterait ouvert. Par la boucle d'exécution, hors de la file.
+        RunLoop.main.perform(inModes: [.common]) {
+            NSApplication.shared.terminate(nil)
+        }
     }
 
     func activateOtherInstance(bundleId: String) {
