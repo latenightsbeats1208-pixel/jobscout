@@ -161,27 +161,201 @@ function processes() {
 }
 
 /**
- * Processus dont la ligne de commande contient l'un des chemins, écrit tel quel
- * OU liens résolus : le lanceur démarre node par le chemin réel de son paquet
- * (/var/… y devient /private/var/…), si bien qu'un chemin non résolu ne
- * trouverait rien et qu'un contrôle « plus aucun processus » passerait à tort.
+ * Chemins écrits tel quel ET liens résolus. Simple protection : lsof ne rend
+ * que des chemins réels, et un préfixe passant par un lien (/var/… au lieu de
+ * /private/var/…) ne trouverait rien. Dans la recette, aucun préfixe n'en
+ * passe par un : le dossier temporaire est résolu dès main(), /Applications,
+ * /Users et /Volumes sont réels. Ce n'était donc pas la cause du « 0 node »
+ * de E.5 (la cause est process.title, voir selectUnder). Un « / » final
+ * (dossier) est conservé.
+ * @param {string[]} prefixes
+ * @param {(p: string) => string} [realpath]
+ * @returns {string[]}
  */
-function processesUnder(...prefixes) {
+export function withRealPaths(prefixes, realpath = fs.realpathSync) {
   const all = new Set();
   for (const x of prefixes) {
     all.add(x);
     const slash = x.endsWith("/");
     try {
-      const r = fs.realpathSync(slash ? x.slice(0, -1) : x);
+      const r = realpath(slash ? x.slice(0, -1) : x);
       all.add(slash ? r + "/" : r);
     } catch {}
   }
-  const list = [...all];
-  return processes().filter((p) => list.some((x) => p.command.includes(x)));
+  return [...all];
 }
 
+/**
+ * Arguments de lsof pour les fichiers « txt » des processus d'un utilisateur.
+ *   -a      ET entre -u et -d ; sans lui, lsof les combine en OU (tous les
+ *           fichiers de l'utilisateur, OU les txt de tous les processus) ;
+ *   -u uid  processus de cet utilisateur seulement ;
+ *   -d txt  exécutable et fichiers projetés en mémoire (bibliothèques) ;
+ *   -n -P   ni DNS ni noms de ports : rien à résoudre ;
+ *   -w      avertissements supprimés (stderr) ;
+ *   -Fpn    sortie par champs : « p<pid> » (toujours émis) ouvre un processus,
+ *           « n<chemin> » donne un fichier, « f<fd> » (toujours émis) est ignoré.
+ * @param {number} uid
+ */
+export function lsofTxtArgs(uid) {
+  return ["-nP", "-w", "-a", "-u", String(uid), "-d", "txt", "-Fpn"];
+}
+
+/**
+ * Sortie de « lsof -Fpn » → Map pid → chemins. Chaque « n » appartient au
+ * dernier « p » lu ; toute autre ligne est ignorée.
+ * @param {string} stdout
+ * @returns {Map<number, string[]>}
+ */
+export function parseLsofFields(stdout) {
+  /** @type {Map<number, string[]>} */
+  const map = new Map();
+  /** @type {string[] | null} */
+  let files = null;
+  for (const l of String(stdout ?? "").split("\n")) {
+    if (l.startsWith("p")) {
+      const pid = /^p(\d+)$/.test(l) ? Number(l.slice(1)) : 0;
+      files = pid > 0 ? (map.get(pid) ?? []) : null;
+      if (files) map.set(pid, files);
+    } else if (l.startsWith("n") && files && l.length > 1) files.push(l.slice(1));
+  }
+  return map;
+}
+
+/**
+ * Le fichier est-il ce chemin, ou dessous ? Préfixe en « / » : un dossier,
+ * seul ce qui est dessous compte. Sinon : le chemin lui-même, ou ce qui est
+ * sous lui (« …/node » ne couvre pas « …/node-bis »).
+ * @param {string} file
+ * @param {string} prefix
+ */
+export function pathUnder(file, prefix) {
+  return prefix.endsWith("/") ? file.startsWith(prefix) : file === prefix || file.startsWith(prefix + "/");
+}
+
+/**
+ * Processus « sous » l'un des préfixes : ligne de commande qui en contient
+ * un, OU fichier txt dessous. Le second critère ne dépend pas de la ligne de
+ * commande, que process.title réécrit sous macOS (Next.js y met
+ * « next-server (v…) » : le chemin de node disparaît de ps). Un pid vu par
+ * lsof mais pas par ps compte s'il vit encore. La recette (selfPid) est exclue.
+ * @param {{ ps: Array<{ pid: number, pgid: number | null, command: string }>,
+ *           txt: Map<number, string[]>, prefixes: string[], selfPid: number,
+ *           isAlive?: (pid: number) => boolean }} input
+ * @returns {Array<{ pid: number, pgid: number | null, command: string, txt: string[] }>}
+ */
+export function selectUnder({ ps, txt, prefixes, selfPid, isAlive = () => true }) {
+  const seen = new Set(ps.map((p) => p.pid));
+  const onlyLsof = [...txt.keys()].filter((pid) => !seen.has(pid) && isAlive(pid)).map((pid) => ({ pid, pgid: null, command: "" }));
+  return [...ps, ...onlyLsof]
+    .filter((p) => p.pid !== selfPid)
+    .map((p) => ({ ...p, txt: txt.get(p.pid) ?? [] }))
+    .filter((p) => prefixes.some((x) => p.command.includes(x) || p.txt.some((f) => pathUnder(f, x))));
+}
+
+/** Coût de lsof dans les boucles de sondage (publié en fin de recette). */
+const lsofStats = { calls: 0, maxMs: 0 };
+
+/**
+ * Un appel lsof est-il exploitable ? null si oui, sinon la raison. Code de
+ * sortie ignoré : lsof rend 1 dès qu'un élément lui échappe, et sa sortie
+ * reste exploitable. Témoin : selfPid (la recette, même utilisateur) doit y
+ * figurer avec au moins un fichier. Sans ce témoin, une sortie vide (lsof
+ * absent, délai dépassé) ferait conclure « 0 processus » à tort.
+ * @param {{ code: number | null, signal?: string | null, stderr?: string, ms?: number }} r
+ * @param {Map<number, string[]>} txt
+ * @param {number} selfPid
+ * @returns {string | null}
+ */
+export function lsofProblem(r, txt, selfPid) {
+  if (r.code === null) return `lsof ${r.signal ? `interrompu (${r.signal}) après ${s1(r.ms ?? 0)}` : `inutilisable : ${tailLines(r.stderr ?? "", 1) || "sans message"}`}`;
+  if (!txt.get(selfPid)?.length) return `lsof n'a pas vu la recette elle-même (code ${r.code}, ${txt.size} processus)`;
+  return null;
+}
+
+/**
+ * Exactement n processus, ET lsof exploitable : sans lsof, rien n'est conclu.
+ * @param {{ list: unknown[], problem: string | null }} r
+ * @param {number} n
+ */
+export function exactly(r, n) {
+  return r.list.length === n && !r.problem;
+}
+
+/**
+ * Plus aucun processus, ET lsof exploitable.
+ * @param {{ list: unknown[], problem: string | null }} r
+ */
+export function noneLeft(r) {
+  return exactly(r, 0);
+}
+
+/**
+ * Fichiers txt des processus de l'utilisateur courant, en un seul appel.
+ * @returns {{ txt: Map<number, string[]>, problem: string | null }}
+ */
+function txtFiles() {
+  const r = run("lsof", lsofTxtArgs(process.getuid()), { timeoutMs: 20000 });
+  lsofStats.calls++;
+  lsofStats.maxMs = Math.max(lsofStats.maxMs, r.ms);
+  const txt = parseLsofFields(r.stdout);
+  return { txt, problem: lsofProblem(r, txt, process.pid) };
+}
+
+/**
+ * Processus sous l'un des chemins (voir selectUnder) : ligne de commande par
+ * ps, fichiers txt par lsof. Si lsof est inutilisable, `problem` le dit et la
+ * liste ne repose plus que sur ps, où un node renommé par process.title
+ * n'apparaît pas : un contrôle « plus aucun processus » ou « un seul node »
+ * doit alors échouer, jamais conclure (noneLeft, exactly).
+ */
+function processesUnder(...prefixes) {
+  const { txt, problem } = txtFiles();
+  const list = selectUnder({ ps: processes(), txt, prefixes: withRealPaths(prefixes), selfPid: process.pid, isAlive: alive });
+  return { list, problem };
+}
+
+/**
+ * Attend un état, dans une limite tenue à la FIN de la sonde qui le constate
+ * (preuve d'état) : une sonde lancée avant l'échéance mais finie après (lsof
+ * lent) ne fait jamais passer le contrôle. La sonde rend `done` et, quand la
+ * partie bon marché de l'état est vue, `seenAt` (instant pris AVANT la partie
+ * coûteuse) : la mesure publiée ne compte pas la durée de lsof.
+ * @param {number} t0 origine des durées (avant le geste)
+ * @param {number} limitMs
+ * @param {number} everyMs
+ * @param {() => ({ done: boolean, seenAt?: number | null } | Promise<{ done: boolean, seenAt?: number | null }>)} probe
+ * @returns {Promise<{ ok: boolean, done: boolean, provenMs: number, seenMs: number | null }>}
+ */
+export async function waitWithin(t0, limitMs, everyMs, probe) {
+  /** @type {number | null} */
+  let seenAt = null;
+  const done = await waitFor(async () => {
+    const r = await probe();
+    if (seenAt === null && r.seenAt) seenAt = r.seenAt;
+    return r.done;
+  }, Math.max(0, t0 + limitMs - Date.now()), everyMs);
+  const provenMs = Date.now() - t0;
+  return { ok: done && provenMs <= limitMs, done, provenMs, seenMs: seenAt === null ? null : seenAt - t0 };
+}
+
+/** Détail d'un contrôle : problème de lsof, puis un processus par entrée. */
+function procsText({ list, problem }, width = 120) {
+  const one = (p) => {
+    const cmd = p.command.slice(0, width);
+    const exe = p.txt[0] && !p.command.includes(p.txt[0]) ? ` [${p.txt[0]}]` : "";
+    return `pid ${p.pid}${cmd ? ` ${cmd}` : ""}${exe}`;
+  };
+  return [problem, ...list.map(one)].filter(Boolean).join(" | ");
+}
+
+/** « (texte) » si le texte n'est pas vide. */
+const paren = (s) => (s ? ` (${s})` : "");
+
 function killUnder(...prefixes) {
-  for (const p of processesUnder(...prefixes)) {
+  const r = processesUnder(...prefixes);
+  if (r.problem) line(`[recette] nettoyage : ${r.problem}, processus cherchés par ps seulement`);
+  for (const p of r.list) {
     try {
       process.kill(p.pid, "SIGKILL");
     } catch {}
@@ -388,15 +562,28 @@ async function stopLauncher(h, signal = "SIGTERM", timeoutMs = 10000) {
   return { exit: ex, ms: Date.now() - t0 };
 }
 
-/** Tout est-il arrêté pour ce lancement ? (pid, port, processus, runtime.json) */
-async function allStopped(ctx, rt, dataDir) {
-  const procs = processesUnder(ctx.macosPrefix, path.join(dataDir, "browsers") + "/");
+/**
+ * Tout est-il arrêté pour ce lancement ? (pid, port, processus, runtime.json)
+ * Conditions bon marché d'abord ; `stoppedAt` = instant où elles sont vues
+ * vraies, avant lsof (null sinon). `lazy` (sondage) : lsof seulement si elles
+ * le sont, pour garder le rythme du sondage et ne payer lsof qu'à la fin.
+ * @returns {Promise<{ ok: boolean, stoppedAt: number | null, detail: string }>}
+ */
+async function allStopped(ctx, rt, dataDir, { lazy = false } = {}) {
+  const launcherUp = alive(rt?.pid);
+  const nodeUp = alive(rt?.serverPid);
   const port = rt?.url ? Number(new URL(rt.url).port) : null;
   const portClosed = port ? (await A.portState(port)) === "fermé" : true;
+  const runtimeLeft = exists(path.join(dataDir, "runtime.json"));
+  const cheap = !launcherUp && !nodeUp && portClosed && !runtimeLeft;
+  const stoppedAt = cheap ? Date.now() : null;
+  const procs = lazy && !cheap ? null : processesUnder(ctx.macosPrefix, path.join(dataDir, "browsers") + "/");
   return {
-    ok: !alive(rt?.pid) && !alive(rt?.serverPid) && procs.length === 0 && portClosed && !exists(path.join(dataDir, "runtime.json")),
-    detail: `lanceur ${alive(rt?.pid) ? "actif" : "arrêté"}, node ${alive(rt?.serverPid) ? "actif" : "arrêté"}, ` +
-      `${procs.length} processus restant(s), port ${portClosed ? "fermé" : "ouvert"}, runtime.json ${exists(path.join(dataDir, "runtime.json")) ? "présent" : "supprimé"}`,
+    ok: cheap && !!procs && noneLeft(procs),
+    stoppedAt,
+    detail: `lanceur ${launcherUp ? "actif" : "arrêté"}, node ${nodeUp ? "actif" : "arrêté"}, ` +
+      (procs ? `${procs.list.length} processus restant(s)${paren(procsText(procs, 80))}` : "processus non cherchés") +
+      `, port ${portClosed ? "fermé" : "ouvert"}, runtime.json ${runtimeLeft ? "présent" : "supprimé"}`,
   };
 }
 
@@ -632,7 +819,7 @@ async function groupC(ctx) {
   const denied = A.fsDeniedLines(logText());
   check("C.91", "aucun EROFS, EACCES ni EPERM dans le journal (rien n'écrit dans l'app)", denied.length === 0, denied.slice(0, 3).join(" | "));
   const left = processesUnder(ctx.volApp + "/");
-  check("C.92", "aucun processus restant depuis le volume", left.length === 0, left.map((p) => p.command.slice(0, 120)).join(" | "));
+  check("C.92", "aucun processus restant depuis le volume", noneLeft(left), procsText(left));
   notice(`Recette C (${ctx.label})`, `serveur prêt en ${s1(readyMs)} depuis le volume en lecture seule ; ${r.routes} routes sans 5xx (${s1(r.sweepMs)}) ; arrêt par stdin en ${s1(stopMs)} ; .wasm OCR : ${A.tesseractWasm(appDir).length}`);
 }
 
@@ -696,7 +883,7 @@ async function groupE(ctx) {
   const second = launch(ctx, "E5-seconde-instance", ctx.launcherBin, ["--no-browser", "--non-interactive"], { env: launcherEnv(ctx, d) });
   const ex2 = await waitExit(second, 10000);
   const nodes = processesUnder(ctx.appNode);
-  check("E.5", "seconde instance : code 2 en moins de 10 s, un seul node", !!ex2 && ex2.code === 2 && nodes.length === 1, `${exitText(ex2)}, ${nodes.length} node`);
+  check("E.5", "seconde instance : code 2 en moins de 10 s, un seul node", !!ex2 && ex2.code === 2 && exactly(nodes, 1), `${exitText(ex2)}, ${nodes.list.length} node${paren(procsText(nodes, 80))}`);
   if (!ex2) await stopLauncher(second, "SIGKILL", 3000);
 
   // Moteur LinkedIn, installé par le bouton de l'application.
@@ -773,10 +960,23 @@ async function groupF(ctx) {
   await sleep(500);
   const t0 = Date.now();
   await stopLauncher(a.h, "SIGKILL", 3000);
-  const gone = await waitFor(() => !alive(a.rt.serverPid) && processesUnder(ctx.macosPrefix).length === 0, 10000, 200);
-  const killMs = Date.now() - t0;
-  ctx.measures.guardMs = killMs;
-  check("F.1c", "SIGKILL du lanceur : node et cli.js install arrêtés en moins de 10 s", gone, gone ? s1(killMs) : processesUnder(ctx.macosPrefix).map((p) => p.command.slice(0, 100)).join(" | "));
+  // lsof seulement une fois node vu arrêté ; guardMs = cet instant (sans lsof,
+  // comparable aux séries précédentes) ; la limite porte sur la preuve.
+  const w = await waitWithin(t0, 10000, 200, () => {
+    if (alive(a.rt.serverPid)) return { done: false };
+    const seenAt = Date.now();
+    return { done: noneLeft(processesUnder(ctx.macosPrefix)), seenAt };
+  });
+  ctx.measures.guardMs = w.seenMs ?? w.provenMs;
+  ctx.measures.guardPreuveMs = w.provenMs;
+  check(
+    "F.1c",
+    "SIGKILL du lanceur : node et cli.js install arrêtés en moins de 10 s",
+    w.ok,
+    w.done
+      ? `node arrêté à ${s1(ctx.measures.guardMs)}, plus aucun processus constaté à ${s1(w.provenMs)} (lsof compris)`
+      : `rien de constaté en ${s1(w.provenMs)} : node ${alive(a.rt.serverPid) ? "actif" : "arrêté"} ; ${procsText(processesUnder(ctx.macosPrefix), 100)}`
+  );
   const a2 = await startLauncher(ctx, "F1-relance", d2);
   const eng = a2.rt ? await A.http(a2.rt.url + "/api/engine") : { status: 0, json: null };
   check("F.1d", "relance : moteur installed=false (téléchargement interrompu)", eng.status === 200 && eng.json?.installed === false, `HTTP ${eng.status} installed=${eng.json?.installed}`);
@@ -854,10 +1054,24 @@ async function groupG(ctx) {
   try {
     process.kill(rt.pid, "SIGTERM");
   } catch {}
-  let st = { ok: false, detail: "" };
-  await waitFor(async () => (st = await allStopped(ctx, rt, ctx.dataDir)).ok, 10000, 250);
-  ctx.measures.guiStopMs = Date.now() - t1;
-  check("G.1c", "SIGTERM à l'app : tout arrêté en moins de 10 s", st.ok, `${st.detail} (${s1(ctx.measures.guiStopMs)})`);
+  // Sondage à 250 ms sans lsof tant que lanceur, node, port ou runtime.json
+  // vivent ; guiStopMs = instant où ils sont vus arrêtés (sans lsof).
+  let st = { ok: false, stoppedAt: null, detail: "" };
+  const w = await waitWithin(t1, 10000, 250, async () => {
+    st = await allStopped(ctx, rt, ctx.dataDir, { lazy: true });
+    return { done: st.ok, seenAt: st.stoppedAt };
+  });
+  ctx.measures.guiStopMs = w.seenMs ?? w.provenMs;
+  ctx.measures.guiStopPreuveMs = w.provenMs;
+  if (!w.done) st = await allStopped(ctx, rt, ctx.dataDir);
+  check(
+    "G.1c",
+    "SIGTERM à l'app : tout arrêté en moins de 10 s",
+    w.ok,
+    w.done
+      ? `${st.detail} (arrêt vu à ${s1(ctx.measures.guiStopMs)}, constaté à ${s1(w.provenMs)}, lsof compris)`
+      : `rien de constaté en ${s1(w.provenMs)} ; état final : ${st.detail}`
+  );
 
   const at = attach(ctx.dmg);
   check("G.2a", "volume remonté", !!at.mountPoint, at.error ?? at.mountPoint);
@@ -869,7 +1083,7 @@ async function groupG(ctx) {
   check("G.2b", "lancement depuis le volume : code 64, stderr cite « Applications »", ex?.code === 64 && readText(h.errFile).includes("Applications"), `${exitText(ex)} — ${tailLines(readText(h.errFile), 2)}`);
   check("G.2c", "volume détaché", await detach(ctx.vol));
   ctx.vol = null;
-  notice(`Recette F–G (${ctx.label})`, `SIGKILL du lanceur → serveur arrêté en ${s1(ctx.measures.guardMs)} ; SIGKILL de node → code 70 en ${s1(ctx.measures.code70Ms)} ; port occupé → port suivant ; open -n prêt en ${s1(ctx.measures.guiMs)}, arrêt ${s1(ctx.measures.guiStopMs)} ; depuis le volume → code 64`);
+  notice(`Recette F–G (${ctx.label})`, `SIGKILL du lanceur → serveur arrêté en ${s1(ctx.measures.guardMs)} (preuve lsof à ${s1(ctx.measures.guardPreuveMs)}) ; SIGKILL de node → code 70 en ${s1(ctx.measures.code70Ms)} ; port occupé → port suivant ; open -n prêt en ${s1(ctx.measures.guiMs)}, arrêt ${s1(ctx.measures.guiStopMs)} (preuve lsof à ${s1(ctx.measures.guiStopPreuveMs)}) ; depuis le volume → code 64`);
 }
 
 async function groupH(ctx) {
@@ -1129,6 +1343,7 @@ async function main(argv) {
     line(`[recette] nettoyage incomplet : ${e instanceof Error ? e.message : String(e)}`);
   }
   const totalMs = Date.now() - started;
+  if (ctx) Object.assign(ctx.measures, { lsofAppels: lsofStats.calls, lsofMaxMs: lsofStats.maxMs });
   const { ok, total } = writeSummary(ctx, failure, totalMs);
   if (warnings.length) {
     const shown = warnings.slice(0, 8);
@@ -1147,7 +1362,7 @@ async function main(argv) {
     return 1;
   }
   const extra = deferredNotices.length ? ` | ${deferredNotices.join(" | ")}` : "";
-  line(annotation("notice", `Recette ${ctx.label}`, `${ok}/${total} contrôles OK, ${warnings.length} avertissement(s) — JobScout ${ctx.v}, ${ctx.label}, signature ${ctx.signature} — durée ${s1(totalMs)}${extra}`));
+  line(annotation("notice", `Recette ${ctx.label}`, `${ok}/${total} contrôles OK, ${warnings.length} avertissement(s) — JobScout ${ctx.v}, ${ctx.label}, signature ${ctx.signature} — durée ${s1(totalMs)}, lsof ${lsofStats.calls} appels, ${s1(lsofStats.maxMs)} au plus${extra}`));
   return 0;
 }
 
