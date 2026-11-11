@@ -11,6 +11,9 @@ export type ScoreResult = {
     language: number;
     duration: number;
     contract: number;
+    matched_sectors: string[];
+    matched_skills: string[];
+    profile_skills_not_in_offer: string[];
   };
   reason: string;
 };
@@ -316,6 +319,12 @@ export function scoreOffreLocal(
       language: language.score,
       duration: duration.score,
       contract: contract.score,
+      matched_sectors: sector.matched,
+      matched_skills: skills.matched,
+      profile_skills_not_in_offer: profile.skills
+        .filter((s) => !skills.matched.includes(s.name))
+        .map((s) => s.name)
+        .slice(0, 8),
     },
     reason,
   };

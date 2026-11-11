@@ -1,6 +1,7 @@
 # Dépendances et fichiers régénérés par Next.js / TypeScript
 node_modules/
 .next/
+.next-dev/
 out/
 build/
 dist/

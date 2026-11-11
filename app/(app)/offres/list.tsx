@@ -34,12 +34,14 @@ export function OffresList({
   initialVieOnly = false,
   initialMinScore = 0,
   homeSuggestion = null,
+  initialNewOnly = false,
 }: {
   initialResult: OffersSearch;
   initialVieOnly?: boolean;
   initialMinScore?: number;
   /** Commune proposée d'après le lieu du profil, tant qu'aucune ville de référence n'est choisie. */
   homeSuggestion?: HomeCommune | null;
+  initialNewOnly?: boolean;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -50,6 +52,7 @@ export function OffresList({
   const [contracts, setContracts] = useState<Set<ContractCategory>>(() => new Set(initialVieOnly ? ["vie"] : []));
   const scoreThreshold = initialMinScore || DEFAULT_MIN_SCORE;
   const [minScore, setMinScore] = useState(initialMinScore > 0);
+  const [newOnly, setNewOnly] = useState(initialNewOnly);
   const [sortBy, setSortBy] = useState<OffersSort>("smart");
   // Distance : rayon en km (0 = dans la commune), null = toutes distances.
   const [radius, setRadius] = useState<number | null>(null);
@@ -66,10 +69,10 @@ export function OffresList({
   const initialVieRef = useRef(initialVieOnly);
   const contractKey = [...contracts].sort().join(",");
   const vieFilter = contracts.has("vie");
-  const hasFilters = !!query || !!source || !!country || contracts.size > 0 || minScore || radius !== null;
-  const activeFilterCount = Number(!!source) + Number(!!country) + contracts.size + Number(minScore) + Number(radius !== null);
   const distanceFacets = result.facets.distance;
   const home = distanceFacets.home;
+  const hasFilters = !!query || !!source || !!country || contracts.size > 0 || minScore || newOnly || radius !== null;
+  const activeFilterCount = Number(!!source) + Number(!!country) + contracts.size + Number(minScore) + Number(newOnly) + Number(radius !== null);
   const { countries, sources, contractCounts } = result.facets;
   const shown = result.offers;
   const remaining = Math.max(0, result.total - shown.length);
@@ -89,8 +92,8 @@ export function OffresList({
   // router.refresh() de fin de scan renverrait la liste filtrée du serveur alors que
   // le filtre paraît désactivé.
   useEffect(() => {
-    if ((initialVieOnly && !vieFilter) || (initialMinScore > 0 && !minScore)) router.replace("/offres", { scroll: false });
-  }, [initialVieOnly, vieFilter, initialMinScore, minScore, router]);
+    if ((initialVieOnly && !vieFilter) || (initialMinScore > 0 && !minScore) || (initialNewOnly && !newOnly)) router.replace("/offres", { scroll: false });
+  }, [initialVieOnly, vieFilter, initialMinScore, minScore, initialNewOnly, newOnly, router]);
 
   // Navigation vers /offres?score=N sans quitter la page : on active la puce de score.
   const initialScoreRef = useRef(initialMinScore);
@@ -102,6 +105,14 @@ export function OffresList({
       setPage(1);
     }
   }, [initialMinScore]);
+
+  const initialNewRef = useRef(initialNewOnly);
+  useEffect(() => {
+    if (initialNewRef.current === initialNewOnly) return;
+    initialNewRef.current = initialNewOnly;
+    setNewOnly(initialNewOnly);
+    setPage(1);
+  }, [initialNewOnly]);
 
   // router.refresh() après un scan apporte un nouveau résultat sans perdre les filtres actifs.
   useEffect(() => {
@@ -123,6 +134,7 @@ export function OffresList({
     if (minScore) params.set("minScore", String(scoreThreshold));
     if (radius !== null) params.set("radius", String(radius));
     if (radius !== null && includeUnlocated) params.set("unlocated", "1");
+    if (newOnly) params.set("new", "1");
     setLoading(true);
     setError(false);
     const timer = window.setTimeout(async () => {
@@ -143,10 +155,10 @@ export function OffresList({
       }
     }, page > 1 ? 0 : query ? 250 : 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [query, source, country, contractKey, minScore, scoreThreshold, sortBy, radius, includeUnlocated, page, refreshKey]);
+  }, [query, source, country, contractKey, minScore, newOnly, scoreThreshold, sortBy, radius, includeUnlocated, page, refreshKey]);
 
   function reset() {
-    setQuery(""); setSource(""); setCountry(""); setContracts(new Set()); setMinScore(false); setRadius(null); setIncludeUnlocated(false); setSelectedId(null); setFiltersExpanded(false); setPage(1);
+    setQuery(""); setSource(""); setCountry(""); setContracts(new Set()); setMinScore(false); setNewOnly(false); setRadius(null); setIncludeUnlocated(false); setSelectedId(null); setFiltersExpanded(false); setPage(1);
   }
 
   useEffect(() => {
@@ -165,6 +177,7 @@ export function OffresList({
     }
     setPage(1);
     setRefreshKey((key) => key + 1);
+    setQuery(""); setSource(""); setCountry(""); setContracts(new Set()); setMinScore(false); setNewOnly(false); setSelectedId(null); setFiltersExpanded(false); setPage(1);
   }
 
   function toggleContract(contract: ContractCategory) {
@@ -211,6 +224,7 @@ export function OffresList({
             </Chip>
           ))}
           <Chip active={minScore} onClick={() => { setMinScore(!minScore); setPage(1); }}>Score {scoreThreshold}+</Chip>
+          <Chip active={newOnly} onClick={() => { setNewOnly(!newOnly); setPage(1); }}>Nouvelles</Chip>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">

@@ -10,6 +10,7 @@ export type CandidatureRow = {
   notes: string | null;
   contact: string | null;
   deadline: string | null;
+  follow_up_date: string | null;
   cv_doc_id: number | null;
   lm_doc_id: number | null;
   msg_doc_id: number | null;
@@ -64,6 +65,7 @@ export function createCandidature(args: {
   ext_score?: number | null;
   applied_at?: string | null;
   deadline?: string | null;
+  follow_up_date?: string | null;
   notes?: string | null;
   contact?: string | null;
 }): number {
@@ -83,8 +85,8 @@ export function createCandidature(args: {
   }
   const res = db
     .prepare(
-      `INSERT INTO candidatures (offre_id, applied_at, status, notes, contact, deadline, cv_doc_id, lm_doc_id, msg_doc_id, ext_company, ext_title, ext_country, ext_url, ext_score)
-       VALUES (?, COALESCE(?, datetime('now')), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO candidatures (offre_id, applied_at, status, notes, contact, deadline, follow_up_date, cv_doc_id, lm_doc_id, msg_doc_id, ext_company, ext_title, ext_country, ext_url, ext_score)
+       VALUES (?, COALESCE(?, datetime('now')), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       args.offre_id,
@@ -93,6 +95,7 @@ export function createCandidature(args: {
       args.notes ?? null,
       args.contact ?? null,
       args.deadline ?? null,
+      args.follow_up_date ?? null,
       args.cv_doc_id ?? null,
       args.lm_doc_id ?? null,
       args.msg_doc_id ?? null,
@@ -107,11 +110,11 @@ export function createCandidature(args: {
 
 // Seules ces colonnes sont modifiables via l'API — empêche le mass-assignment
 // (injection de nom de colonne / écriture de champs non prévus).
-const UPDATABLE_COLUMNS = ["status", "notes", "contact", "deadline"] as const;
+const UPDATABLE_COLUMNS = ["status", "notes", "contact", "deadline", "follow_up_date"] as const;
 
 export function updateCandidature(
   id: number,
-  patch: Partial<{ status: Status; notes: string; contact: string; deadline: string }>
+  patch: Partial<{ status: Status; notes: string; contact: string; deadline: string; follow_up_date: string }>
 ) {
   const fields: string[] = [];
   const params: any[] = [];
@@ -130,10 +133,6 @@ export function deleteCandidature(id: number) {
   getDb().prepare("DELETE FROM candidatures WHERE id = ?").run(id);
 }
 
-// Même règle pour le compteur « N échéances à venir » et la liste de l'accueil :
-// une échéance illisible par SQLite (date(...) NULL) n'apparaît ni dans l'un ni dans l'autre.
-const UPCOMING_WHERE = "c.deadline IS NOT NULL AND date(c.deadline) >= date('now')";
-
 export function candidaturesCounts() {
   const db = getDb();
   const rows = db
@@ -141,7 +140,16 @@ export function candidaturesCounts() {
     .all() as { status: string; c: number }[];
   const total = (db.prepare("SELECT COUNT(*) AS c FROM candidatures").get() as { c: number }).c;
   const upcoming = (
-    db.prepare(`SELECT COUNT(*) AS c FROM candidatures c WHERE ${UPCOMING_WHERE}`).get() as { c: number }
+    db.prepare(
+      `SELECT COUNT(*) AS c FROM (
+         SELECT id FROM candidatures WHERE deadline IS NOT NULL AND date(deadline) >= date('now')
+         UNION ALL
+         SELECT id FROM candidatures
+         WHERE follow_up_date IS NOT NULL
+           AND status NOT IN ('acceptee', 'refusee')
+           AND date(follow_up_date) >= date('now')
+       )`
+    ).get() as { c: number }
   ).c;
   return { total, upcoming, byStatus: rows };
 }
@@ -151,27 +159,67 @@ export type UpcomingDeadline = {
   offre_id: number | null;
   deadline: string;
   status: string;
+  kind: "deadline" | "follow_up";
   title: string | null;
   company: string | null;
 };
 
 /**
- * Prochaines échéances avec l'intitulé de la candidature (poste + entreprise).
- * Les chaînes vides comptent comme absentes : certaines sources n'ont pas d'entreprise.
+ * Échéances et relances proches, avec l'intitulé de la candidature.
+ * Les relances en retard restent visibles tant que la candidature est active.
  */
 export function upcomingDeadlines(limit = 5): UpcomingDeadline[] {
   ensureOffresRepaired(); // comme listCandidatures
   const rows = getDb()
     .prepare(
-      `SELECT c.id, c.offre_id, c.deadline, c.status,
+      `SELECT c.id, c.offre_id, c.deadline, c.status, c.kind,
               COALESCE(NULLIF(TRIM(o.title), ''), NULLIF(TRIM(c.ext_title), '')) AS title,
               COALESCE(NULLIF(TRIM(o.company), ''), NULLIF(TRIM(c.ext_company), '')) AS company
-       FROM candidatures c
+       FROM (
+         SELECT id, offre_id, deadline, status, 'deadline' AS kind, ext_title, ext_company
+         FROM candidatures WHERE deadline IS NOT NULL AND date(deadline) >= date('now')
+         UNION ALL
+         SELECT id, offre_id, follow_up_date AS deadline, status, 'follow_up' AS kind, ext_title, ext_company
+         FROM candidatures
+         WHERE follow_up_date IS NOT NULL
+           AND status NOT IN ('acceptee', 'refusee')
+           AND date(follow_up_date) <= date('now', '+30 days')
+       ) c
        LEFT JOIN offres o ON o.id = c.offre_id
-       WHERE ${UPCOMING_WHERE}
        ORDER BY date(c.deadline) ASC, c.id ASC
        LIMIT ?`
     )
     .all(Math.max(1, Math.min(20, Math.trunc(limit)))) as UpcomingDeadline[];
   return plainAll(rows);
+}
+
+export type SearchReport = {
+  total: number;
+  interviews: number;
+  responses: number;
+  accepted: number;
+  refused: number;
+  responseRate: number;
+};
+
+export function searchReport(days = 30): SearchReport {
+  const boundedDays = Math.max(0, Math.min(3650, Math.trunc(days)));
+  const where = boundedDays ? "WHERE date(applied_at) >= date('now', ?)" : "";
+  const rows = getDb()
+    .prepare(`SELECT status, COUNT(*) AS count FROM candidatures ${where} GROUP BY status`)
+    .all(...(boundedDays ? [`-${boundedDays} days`] : [])) as { status: string; count: number }[];
+  const byStatus = new Map(rows.map((row) => [row.status, row.count]));
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
+  const interviews = byStatus.get("entretien") ?? 0;
+  const accepted = byStatus.get("acceptee") ?? 0;
+  const refused = byStatus.get("refusee") ?? 0;
+  const responses = interviews + accepted + refused;
+  return {
+    total,
+    interviews,
+    responses,
+    accepted,
+    refused,
+    responseRate: total ? Math.round((responses / total) * 100) : 0,
+  };
 }

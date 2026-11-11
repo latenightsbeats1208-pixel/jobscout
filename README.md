@@ -4,6 +4,8 @@ Trouvez des offres d'emploi grâce à un scan multi-plateformes, triez-les avec 
 
 Tout tourne sur votre machine : base SQLite locale, serveur limité à `127.0.0.1`, aucun compte à créer. Seuls sortent les recherches envoyées aux sites d'offres pendant un scan et, si vous utilisez une IA en ligne, les textes transmis au fournisseur que vous avez choisi, plus quelques requêtes techniques ([détail](CONFIDENTIALITE.md)).
 
+Le tableau de bord met en évidence les offres découvertes au dernier scan, les relances et échéances, ainsi qu'un bilan des candidatures sur 30 jours. Chaque offre dispose aussi d'une explication détaillée du score de compatibilité ; son détail comprend le score ATS du CV pour le poste et une préparation d'entretien à la demande.
+
 > Site et guide de démarrage : **https://latenightsbeats1208-pixel.github.io/jobscout/** · [Installation](INSTALL.md) · [Installation sur Mac](INSTALL-MAC.md) · [Guide de l'IA](GUIDE-IA.md) · [Conditions d'utilisation](CGU.md) · [Confidentialité](CONFIDENTIALITE.md)
 >
 > **En vidéo**, moins de 2 minutes chacune : [1. Installation](https://youtu.be/cIh4PSmPlKE) · [2. Mise en place](https://youtu.be/gOMQkcsD6LA) · [3. Utilisation](https://youtu.be/45uLxsWXXLQ)

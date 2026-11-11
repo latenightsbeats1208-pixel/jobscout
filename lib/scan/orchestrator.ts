@@ -6,7 +6,7 @@ import { sanitizeScrapedOffre } from "@/lib/offres/clean-text";
 import { registerScanForRepairs } from "@/lib/db/repair-markup";
 import { scoreOffresLocal } from "@/lib/scoring/local";
 import { getProfile } from "@/lib/db/queries";
-import { getDb } from "@/lib/db";
+import { getDb, setSetting } from "@/lib/db";
 import type { ProgressEvent } from "@/lib/scrapers/base";
 
 export type OrchestratorEvent =
@@ -61,6 +61,7 @@ export async function* runScan(
     db.prepare("UPDATE scan_runs SET log = ? WHERE id = ?").run(JSON.stringify(log), runId);
 
   let totalInserted = 0;
+  const newOfferIds = new Set<number>();
 
   for (const scraper of scrapers) {
     let seen = 0;
@@ -83,7 +84,11 @@ export async function* runScan(
           yield ev;
         }
 
+        const existed = db
+          .prepare("SELECT 1 FROM offres WHERE source = ? AND source_id = ?")
+          .get(scraper.name, offre.source_id);
         const id = upsertOffreFromSource(scraper.name, offre);
+        if (!existed) newOfferIds.add(id);
         if (offre.description_status === "ok") {
           totalInserted++;
           okCount++;
@@ -123,6 +128,7 @@ export async function* runScan(
   }
 
   db.prepare("UPDATE scan_runs SET status = 'done', finished_at = datetime('now') WHERE id = ?").run(runId);
+  setSetting("last_scan_new_offer_ids", JSON.stringify([...newOfferIds]));
   yield { kind: "global-done", total_inserted: totalInserted };
 }
 
