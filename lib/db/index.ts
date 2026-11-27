@@ -1,8 +1,7 @@
 import "server-only";
 import { DatabaseSync } from "node:sqlite";
-import fs from "node:fs";
-import path from "node:path";
 import { dbPath } from "@/lib/paths";
+import { openDatabase } from "@/lib/db/migrations";
 
 const DB_PATH = dbPath();
 
@@ -10,24 +9,9 @@ let _db: DatabaseSync | null = null;
 
 export function getDb(): DatabaseSync {
   if (_db) return _db;
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  const db = new DatabaseSync(DB_PATH);
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA foreign_keys = ON");
-
-  const schemaPath = path.join(process.cwd(), "lib", "db", "schema.sql");
-  const schema = fs.readFileSync(schemaPath, "utf-8");
-  db.exec(schema);
-
-  // Migrations additives (bases existantes) — no-op si la colonne existe déjà.
-  try {
-    db.exec(
-      `ALTER TABLE profile ADD COLUMN preferred_contracts TEXT NOT NULL DEFAULT '["cdi","cdd"]'`
-    );
-  } catch {}
-
-  _db = db;
-  return db;
+  // Crée la base ou l'amène à la dernière version du schéma (voir migrations.ts).
+  _db = openDatabase(DB_PATH);
+  return _db;
 }
 
 export function transaction<T>(fn: () => T): T {
